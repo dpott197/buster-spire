@@ -1,0 +1,1336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Quiver Spire</title>
+<meta name="description" content="A TowerFall-style archery arena. Fight AI archers or invite friends with a link.">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one arcade-cabinet column. Scoreboard, 4:3 pixel arena, then setup and controls. Single dark look by choice. */
+:root {
+  --night: #15121e;
+  --stone: #241f31;
+  --stone-hi: #3d3452;
+  --parch: #eee5d3;
+  --muted: #a69cba;
+  --torch: #f4a53c;
+  --blood: #e3524a;
+  --display: 'Silkscreen', ui-monospace, Menlo, monospace;
+  --body: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--parch);
+  font-family: var(--body);
+  font-size: 13px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 28px;
+}
+.wrap { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 4vw, 32px); margin: 0; color: var(--torch); letter-spacing: .03em; text-wrap: balance; }
+.tag { color: var(--muted); font-size: 12px; }
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; min-height: 40px; }
+.slot { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--stone); border: 1px solid var(--stone-hi); min-width: 0; }
+.slot .chip { width: 10px; height: 14px; background: var(--c); flex: none; }
+.slot .nm { font-family: var(--display); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot .pips { font-variant-numeric: tabular-nums; color: var(--torch); letter-spacing: 1px; font-size: 12px; }
+.slot .q { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.slot.dead { opacity: .45; }
+.slot.dead .nm { text-decoration: line-through; }
+.stage { position: relative; width: min(100%, max(320px, calc((100dvh - 250px) * 4 / 3))); max-width: 100%; aspect-ratio: 4 / 3; margin: 0 auto; border: 2px solid var(--stone-hi); background: #000; }
+canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(12, 10, 18, .62); padding: 10px; overflow: auto; }
+.panel { background: var(--stone); border: 2px solid var(--stone-hi); padding: 14px 16px; width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px; text-align: center; margin: auto; }
+.panel h2 { font-family: var(--display); font-size: clamp(15px, 3vw, 22px); margin: 0; color: var(--torch); text-wrap: balance; }
+.panel p { margin: 0; color: var(--muted); line-height: 1.5; }
+.panel .status { color: var(--parch); min-height: 1.5em; }
+.btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+button.big { font-family: var(--display); font-size: 15px; background: var(--torch); color: #1b1324; border: 0; padding: 9px 18px; cursor: pointer; }
+button.big:disabled { opacity: .5; cursor: default; }
+button.ghost { font-family: var(--display); font-size: 13px; background: transparent; color: var(--parch); border: 1px solid var(--stone-hi); padding: 8px 14px; cursor: pointer; }
+button:focus-visible, .seg input:focus-visible + span, input[type=text]:focus-visible { outline: 2px solid var(--parch); outline-offset: 2px; }
+.linkrow { display: flex; gap: 6px; min-width: 0; }
+input[type=text] { flex: 1; min-width: 0; font-family: var(--body); font-size: 12px; background: var(--night); color: var(--parch); border: 1px solid var(--stone-hi); padding: 7px 8px; }
+.seats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.seats li { display: flex; align-items: center; gap: 8px; }
+.seats .chip { width: 8px; height: 12px; background: var(--c); flex: none; }
+.seats .who { color: var(--muted); margin-left: auto; font-size: 11px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.card { background: var(--stone); border: 1px solid var(--stone-hi); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card h3 { font-family: var(--display); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 400; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.row > label { color: var(--parch); }
+.row input[type=text] { flex: 0 1 160px; }
+.seg { display: inline-flex; border: 1px solid var(--stone-hi); }
+.seg label { position: relative; cursor: pointer; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 5px 10px; color: var(--muted); }
+.seg input:checked + span { background: var(--stone-hi); color: var(--parch); }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
+.keys dt { white-space: nowrap; }
+.keys dd { margin: 0; color: var(--muted); }
+kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-hi); border-bottom-width: 2px; padding: 1px 5px; background: var(--night); color: var(--parch); }
+.note { color: var(--muted); line-height: 1.5; margin: 0; }
+.touch { display: none; justify-content: space-between; gap: 12px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.touch .pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(2, 46px); gap: 6px; }
+.touch .acts { display: grid; grid-template-columns: repeat(2, 64px); grid-template-rows: repeat(2, 46px); gap: 6px; }
+.touch button { font-family: var(--display); font-size: 12px; background: var(--stone); color: var(--parch); border: 1px solid var(--stone-hi); touch-action: none; }
+.touch button.on { background: var(--stone-hi); }
+.touch .jump { grid-column: 2; grid-row: 1 / span 2; background: #3b2c19; border-color: var(--torch); }
+@media (pointer: coarse) { .touch { display: flex; } }
+</style>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Quiver Spire</h1>
+    <span class="tag">A TowerFall-style arena. Fight AI archers or invite friends.</span>
+  </header>
+
+  <div class="board" id="board" aria-live="polite"></div>
+
+  <div class="stage" id="stage">
+    <canvas id="game" width="320" height="240" aria-label="Game arena"></canvas>
+    <div class="overlay" id="startOv">
+      <div class="panel">
+        <h2>Last archer standing</h2>
+        <p>Three arrows each. Shoot, stomp, or dodge into an arrow to catch it. The edges wrap around.</p>
+        <div class="btns"><button class="big" id="startBtn" type="button">Play solo</button><button class="ghost" id="hostBtn" type="button">Host online</button></div>
+      </div>
+    </div>
+    <div class="overlay" id="lobbyOv" hidden>
+      <div class="panel">
+        <h2>Online room</h2>
+        <p>Send this link to up to three friends. AI archers fill any empty seats.</p>
+        <div class="linkrow"><input type="text" id="room-link" readonly aria-label="Room link"><button class="ghost" id="copyBtn" type="button">Copy</button></div>
+        <ul class="seats" id="seats"></ul>
+        <p class="status" id="lobbyStatus">Opening room…</p>
+        <div class="btns"><button class="big" id="onlineStartBtn" type="button" disabled>Start match</button><button class="ghost" id="closeRoomBtn" type="button">Close room</button></div>
+      </div>
+    </div>
+    <div class="overlay" id="joinOv" hidden>
+      <div class="panel">
+        <h2 id="joinTitle">Join match</h2>
+        <div class="linkrow"><input type="text" id="join-name" maxlength="12" placeholder="Your name" aria-label="Your name"><button class="big" id="joinBtn" type="button">Join</button></div>
+        <p class="status" id="joinStatus">Pick a name, then join.</p>
+        <div class="btns"><button class="ghost" id="leaveBtn" type="button">Play solo instead</button></div>
+      </div>
+    </div>
+    <div class="overlay" id="pauseOv" hidden>
+      <div class="panel">
+        <h2 id="pauseTitle">Paused</h2>
+        <div class="btns" id="pauseBtns"><button class="big" id="resumeBtn" type="button">Resume</button><button class="ghost" id="quitBtn" type="button">Quit</button></div>
+      </div>
+    </div>
+    <div class="overlay" id="endOv" hidden>
+      <div class="panel">
+        <h2 id="endTitle">Match over</h2>
+        <p id="endText"></p>
+        <div class="btns" id="endBtns"><button class="big" id="againBtn" type="button">Rematch</button><button class="ghost" id="setupBtn" type="button">Change setup</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="touch" id="touch">
+    <div class="pad">
+      <button type="button" data-k="tUp" style="grid-column:2">Up</button>
+      <button type="button" data-k="tLeft" style="grid-column:1;grid-row:2">Left</button>
+      <button type="button" data-k="tDown" style="grid-column:2;grid-row:2">Down</button>
+      <button type="button" data-k="tRight" style="grid-column:3;grid-row:2">Right</button>
+    </div>
+    <div class="acts">
+      <button type="button" data-k="tShoot">Shoot</button>
+      <button type="button" data-k="tJump" class="jump">Jump</button>
+      <button type="button" data-k="tDodge">Dodge</button>
+    </div>
+  </div>
+
+  <div class="cards">
+    <section class="card" aria-labelledby="setupH">
+      <h3 id="setupH">Match setup</h3>
+      <div class="row"><label for="player-name">Your name</label><input type="text" id="player-name" maxlength="12" placeholder="Player"></div>
+      <div class="row"><label>Solo mode</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="mode" id="mode-play" value="play" checked><span>You play</span></label>
+          <label><input type="radio" name="mode" id="mode-watch" value="watch"><span>Watch AI</span></label>
+        </div></div>
+      <div class="row"><label>Archers in the arena</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="foes" id="foes-1" value="1"><span>2</span></label>
+          <label><input type="radio" name="foes" id="foes-2" value="2"><span>3</span></label>
+          <label><input type="radio" name="foes" id="foes-3" value="3" checked><span>4</span></label>
+        </div></div>
+      <div class="row"><label>AI difficulty</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="diff" id="diff-easy" value="easy"><span>Easy</span></label>
+          <label><input type="radio" name="diff" id="diff-normal" value="normal" checked><span>Normal</span></label>
+          <label><input type="radio" name="diff" id="diff-hard" value="hard"><span>Hard</span></label>
+        </div></div>
+      <div class="row"><label>Rounds to win</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="goal" id="goal-3" value="3"><span>3</span></label>
+          <label><input type="radio" name="goal" id="goal-5" value="5" checked><span>5</span></label>
+          <label><input type="radio" name="goal" id="goal-10" value="10"><span>10</span></label>
+        </div></div>
+      <div class="row"><label>Sound</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="snd" id="snd-on" value="on" checked><span>On</span></label>
+          <label><input type="radio" name="snd" id="snd-off" value="off"><span>Off</span></label>
+        </div></div>
+    </section>
+    <section class="card" aria-labelledby="ctrlH">
+      <h3 id="ctrlH">Controls</h3>
+      <dl class="keys">
+        <dt><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd></dt><dd>Run</dd>
+        <dt><kbd>↑</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>S</kbd></dt><dd>Aim up or down. Down drops through ledges</dd>
+        <dt><kbd>Z</kbd> <kbd>J</kbd> <kbd>Space</kbd></dt><dd>Jump. Press against a wall in the air to wall-jump</dd>
+        <dt><kbd>X</kbd> <kbd>K</kbd></dt><dd>Shoot in the held direction (8-way)</dd>
+        <dt><kbd>C</kbd> <kbd>L</kbd> <kbd>Shift</kbd></dt><dd>Dodge. Catches arrows mid-dash</dd>
+        <dt><kbd>Esc</kbd> <kbd>P</kbd></dt><dd>Pause (online, only the host can pause)</dd>
+      </dl>
+      <p class="note">Land on a head to stomp. Walk over stuck or dropped arrows to collect them, up to six. Online, the host's browser runs the match, so the host should keep this page open.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const W = 320, H = 240, T = 16, COLS = 20, ROWS = 15;
+const GRAV = 0.28, MAX_FALL = 4.2, RUN = 1.6, JUMP_V = -5.7, ARROW_SPEED = 5.5, ARROW_G = 0.07, MAX_ARROWS = 6;
+const ROUND_LIMIT = 60 * 90;
+const ROOM_PREFIX = 'quiver-spire-';
+
+const MAPS = [
+  { name: 'Sacred Ground', spawns: [[2,13],[17,13],[5,2],[14,2]], rows: [
+    '####....####....####',
+    '#..................#',
+    '#..................#',
+    '#...----....----...#',
+    '#..................#',
+    '#..................#',
+    '......##....##......',
+    '......##....##......',
+    '#..................#',
+    '#...----....----...#',
+    '#..................#',
+    '#..................#',
+    '#.......----.......#',
+    '#..................#',
+    '####....####....####'] },
+  { name: 'Twilight Spire', spawns: [[2,13],[17,13],[4,8],[15,8]], rows: [
+    '#########..#########',
+    '#..................#',
+    '#..................#',
+    '#..----......----..#',
+    '#.....#......#.....#',
+    '#.....#......#.....#',
+    '.........##.........',
+    '.........##.........',
+    '#..................#',
+    '###----......----###',
+    '#..................#',
+    '#......######......#',
+    '#..................#',
+    '#..................#',
+    '#########..#########'] },
+  { name: "King's Court", spawns: [[2,11],[17,11],[8,4],[11,4]], rows: [
+    '####............####',
+    '#..................#',
+    '#..................#',
+    '#.---..........---.#',
+    '#..................#',
+    '#.......####.......#',
+    '#..................#',
+    '###...--....--...###',
+    '#..................#',
+    '#....---....---....#',
+    '#..................#',
+    '#..................#',
+    '#.---..........---.#',
+    '#..................#',
+    '####............####'] },
+];
+
+const ROSTER = [
+  { name: 'Moss', body: '#58c85f', dark: '#2c6e34' },
+  { name: 'Rose', body: '#ff6fa6', dark: '#9b2f5c' },
+  { name: 'Tide', body: '#59a8ff', dark: '#28508f' },
+  { name: 'Gilt', body: '#ffd447', dark: '#9a7718' },
+];
+
+const AI_LEVELS = {
+  easy:   { react: 26, acc: 0.45, dodge: 0.18, catchP: 0.05, gap: 55, lead: 0,   evade: 16 },
+  normal: { react: 12, acc: 0.75, dodge: 0.5,  catchP: 0.2,  gap: 30, lead: 0.5, evade: 6 },
+  hard:   { react: 4,  acc: 0.93, dodge: 0.85, catchP: 0.45, gap: 14, lead: 1,   evade: 1 },
+};
+
+const DIRS = [[1,0],[-1,0],[0,-1],[0,1],[1,-1],[-1,-1],[1,1],[-1,1]];
+
+// ---------- helpers ----------
+const mod = (v, m) => ((v % m) + m) % m;
+const wd = (v, m) => mod(v + m / 2, m) - m / 2;
+const rand = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
+const cleanName = s => String(s || '').replace(/[^\p{L}\p{N} _.'-]/gu, '').trim().slice(0, 12);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+let grid = MAPS[0].rows;
+const tileAt = (c, r) => grid[mod(r, ROWS)][mod(c, COLS)];
+const isSolid = (c, r) => tileAt(c, r) === '#';
+const solidPx = (x, y) => isSolid(Math.floor(x / T), Math.floor(y / T));
+function boxSolid(x, y, w, h) {
+  const c0 = Math.floor(x / T), c1 = Math.floor((x + w - 0.001) / T);
+  const r0 = Math.floor(y / T), r1 = Math.floor((y + h - 0.001) / T);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (isSolid(c, r)) return true;
+  return false;
+}
+function inBox(px, py, bx, by, bw, bh) {
+  const dx = wd(px - (bx + bw / 2), W), dy = wd(py - (by + bh / 2), H);
+  return Math.abs(dx) <= bw / 2 && Math.abs(dy) <= bh / 2;
+}
+function boxesOverlap(a, b) {
+  const dx = wd((a.x + a.w / 2) - (b.x + b.w / 2), W), dy = wd((a.y + a.h / 2) - (b.y + b.h / 2), H);
+  return Math.abs(dx) < (a.w + b.w) / 2 && Math.abs(dy) < (a.h + b.h) / 2;
+}
+
+// ---------- state ----------
+const game = {
+  mode: 'menu', attract: true, paused: false, frame: 0, mySlot: -1,
+  settings: { mode: 'watch', foes: 3, diff: 'normal', goal: 5 },
+  archers: [], arrows: [], parts: [], mapIdx: 0, round: 0, openRows: [],
+  banner: null, roundT: 0, endT: 0, freezeT: 0, shake: 0, arrowId: 0,
+};
+
+// Online: 'off', 'host' (runs the simulation) or 'guest' (sends input, draws host snapshots)
+const net = { role: 'off', peer: null, code: '', guests: new Map(), inputs: new Map(), events: [], host: null, matchOn: false,
+  cnt: { j: 0, s: 0, d: 0 }, lastSnapAt: 0, wasOver: false };
+
+// ---------- sound ----------
+let actx = null, soundOn = true;
+function ensureAudio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; } }
+  if (actx && actx.state === 'suspended') actx.resume().catch(() => {});
+}
+function tone(f1, f2, dur, type = 'square', vol = 0.05) {
+  if (!actx || !soundOn || game.attract) return;
+  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(dur, vol = 0.08) {
+  if (!actx || !soundOn || game.attract) return;
+  const len = Math.floor(actx.sampleRate * dur), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const s = actx.createBufferSource(), g = actx.createGain(); g.gain.value = vol;
+  s.buffer = buf; s.connect(g).connect(actx.destination); s.start();
+}
+const sfx = {
+  jump: () => tone(260, 520, 0.08, 'square', 0.03),
+  shoot: () => tone(1100, 300, 0.08, 'triangle', 0.06),
+  thunk: () => tone(180, 80, 0.05, 'square', 0.04),
+  death: () => { noise(0.35, 0.09); tone(400, 60, 0.3, 'sawtooth', 0.04); },
+  catch: () => tone(700, 1400, 0.1, 'sine', 0.06),
+  pickup: () => tone(660, 990, 0.06, 'triangle', 0.05),
+  dodge: () => tone(180, 640, 0.07, 'sawtooth', 0.025),
+  stomp: () => tone(220, 110, 0.1, 'square', 0.06),
+  round: () => { tone(523, 523, 0.1, 'square', 0.04); setTimeout(() => tone(784, 784, 0.18, 'square', 0.04), 110); },
+};
+// the host forwards every sound to guests
+for (const k of Object.keys(sfx)) { const f = sfx[k]; sfx[k] = () => { f(); if (net.role === 'host' && !game.attract) net.events.push(['s', k]); }; }
+
+// ---------- input ----------
+const keys = new Set(), pressed = new Set();
+const KEYMAP = {
+  left: ['ArrowLeft', 'KeyA', 'tLeft'], right: ['ArrowRight', 'KeyD', 'tRight'],
+  up: ['ArrowUp', 'KeyW', 'tUp'], down: ['ArrowDown', 'KeyS', 'tDown'],
+  jump: ['KeyZ', 'KeyJ', 'Space', 'tJump'], shoot: ['KeyX', 'KeyK', 'tShoot'],
+  dodge: ['KeyC', 'KeyL', 'ShiftLeft', 'ShiftRight', 'tDodge'],
+};
+const GAME_KEYS = new Set(Object.values(KEYMAP).flat());
+const held = name => KEYMAP[name].some(k => keys.has(k));
+const hit = name => KEYMAP[name].some(k => pressed.has(k));
+const inField = e => e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.target.type === 'text';
+const playing = () => (game.mode === 'play' && !game.attract) || net.role === 'guest';
+
+function keyDown(code, repeat) {
+  if (!repeat && !keys.has(code)) {
+    pressed.add(code);
+    if (KEYMAP.jump.includes(code)) net.cnt.j++;
+    if (KEYMAP.shoot.includes(code)) net.cnt.s++;
+    if (KEYMAP.dodge.includes(code)) net.cnt.d++;
+  }
+  keys.add(code);
+  if (net.role === 'guest' && GAME_KEYS.has(code)) sendGuestInput();
+}
+function keyUp(code) {
+  keys.delete(code);
+  if (net.role === 'guest' && GAME_KEYS.has(code)) sendGuestInput();
+}
+
+addEventListener('keydown', e => {
+  if (inField(e)) { if (e.code === 'Enter' && e.target.id === 'join-name') joinRoom(); return; }
+  if (GAME_KEYS.has(e.code) && playing()) e.preventDefault();
+  keyDown(e.code, e.repeat);
+  ensureAudio();
+  if ((e.code === 'Escape' || e.code === 'KeyP') && net.role !== 'guest' && !game.attract && game.mode === 'play') togglePause();
+  if (e.code === 'Enter' && !el.startOv.hidden) beginSolo();
+});
+addEventListener('keyup', e => keyUp(e.code));
+addEventListener('blur', () => {
+  [...keys].forEach(keyUp);
+  if (net.role === 'off' && !game.attract && game.mode === 'play' && !game.paused) togglePause();
+});
+
+document.querySelectorAll('#touch button').forEach(b => {
+  const k = b.dataset.k;
+  const on = e => { e.preventDefault(); ensureAudio(); keyDown(k, false); b.classList.add('on'); };
+  const off = e => { e.preventDefault(); keyUp(k); b.classList.remove('on'); };
+  b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+  b.addEventListener('contextmenu', e => e.preventDefault());
+});
+
+const blankInput = () => ({ left: false, right: false, up: false, down: false, jump: false, jumpPressed: false, shoot: false, dodge: false, aim: null, dodgeDir: null });
+function humanInput() {
+  const i = blankInput();
+  i.left = held('left'); i.right = held('right'); i.up = held('up'); i.down = held('down');
+  i.jump = held('jump'); i.jumpPressed = hit('jump'); i.shoot = hit('shoot'); i.dodge = hit('dodge');
+  return i;
+}
+function remoteInput(a) {
+  const i = blankInput(), st = net.inputs.get(a.remote);
+  if (!st) return i;
+  i.left = !!st.l; i.right = !!st.r; i.up = !!st.u; i.down = !!st.d; i.jump = !!st.j;
+  i.jumpPressed = st.cj > st.sj; i.shoot = st.cs > st.ss; i.dodge = st.cd > st.sd;
+  st.sj = st.cj; st.ss = st.cs; st.sd = st.cd;
+  return i;
+}
+
+// ---------- match flow ----------
+function myName() { return cleanName(el.nameInput.value) || 'Player'; }
+
+function makeArcher(slot, seat, level) {
+  const r = ROSTER[slot], kind = seat ? seat.kind : 'ai';
+  return {
+    slot, name: kind === 'ai' ? r.name : seat.name, body: r.body, dark: r.dark,
+    ai: kind === 'ai' ? { lv: AI_LEVELS[level] } : null, remote: kind === 'remote' ? seat.peer : null,
+    x: 0, y: 0, vx: 0, vy: 0, w: 8, h: 12, facing: 1, arrows: 3, alive: true, onGround: false, onPlat: false,
+    coyote: 0, jumpBuf: 0, wallDir: 0, dropT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeY: 0, shootCd: 0,
+    aimX: 1, aimY: 0, score: 0, runF: 0, prevY: 0, youT: 0,
+  };
+}
+
+function resetAI(a) {
+  Object.assign(a.ai, { seeT: 0, shotT: 30 + rand(30), goalT: 0, gx: a.x, gy: a.y, wander: 0, wanderT: 0,
+    jumpHold: 0, best: Infinity, stuckT: 0, seen: new Set(), evadeT: -1, evadeArrow: null, evadeMode: 'jump' });
+}
+
+// seats: [{kind:'local'|'remote', name, peer}] in slot order; empty seats become AI
+function startMatch(settings, attract, seats = []) {
+  game.settings = settings; game.attract = attract;
+  const total = Math.min(4, Math.max(seats.length, settings.foes + 1));
+  game.archers = [];
+  for (let i = 0; i < total; i++) game.archers.push(makeArcher(i, seats[i], settings.diff));
+  game.mySlot = seats.findIndex(s => s.kind === 'local');
+  game.round = 0; game.mapIdx = Math.floor(Math.random() * MAPS.length) - 1;
+  game.paused = false;
+  startRound();
+}
+
+function startRound() {
+  game.round++;
+  game.mapIdx = (game.mapIdx + 1) % MAPS.length;
+  const map = MAPS[game.mapIdx];
+  grid = map.rows;
+  game.openRows = [];
+  for (let r = 0; r < ROWS; r++) if (grid[r][0] !== '#' && grid[r][COLS - 1] !== '#') game.openRows.push(r);
+  game.arrows = []; game.parts = [];
+  const spawns = map.spawns.slice().sort(() => Math.random() - 0.5);
+  game.archers.forEach((a, i) => {
+    const [c, r] = spawns[i % spawns.length];
+    Object.assign(a, { x: c * T + 4, y: (r + 1) * T - a.h, vx: 0, vy: 0, arrows: 3, alive: true, dodgeT: 0, dodgeCd: 0,
+      shootCd: 0, jumpBuf: 0, coyote: 0, dropT: 0, facing: c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 120 });
+    if (a.ai) resetAI(a);
+  });
+  game.mode = 'play'; game.freezeT = 70; game.roundT = 0; game.endT = 0;
+  game.banner = { top: 'Round ' + game.round, sub: map.name };
+  buildMapCanvas();
+  sfx.round();
+}
+
+// ---------- archers ----------
+function updateArcher(a, inp) {
+  a.prevY = a.y;
+  if (a.shootCd > 0) a.shootCd--;
+  if (a.dodgeCd > 0) a.dodgeCd--;
+  if (a.dropT > 0) a.dropT--;
+  if (a.youT > 0) a.youT--;
+
+  const hor = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+  const ver = (inp.down ? 1 : 0) - (inp.up ? 1 : 0);
+
+  if (a.dodgeT > 0) {
+    a.dodgeT--;
+    a.vx = a.dodgeX * 3.3; a.vy = a.dodgeY * 3.3;
+    if (a.dodgeT === 0) { a.vx *= 0.45; a.vy *= 0.45; }
+    if (Math.random() < 0.6) spawnPart(a.x + rand(a.w), a.y + rand(a.h), 0, 0, 10, a.body, 0);
+  } else {
+    if (hor) a.facing = hor;
+    const target = hor * RUN, acc = a.onGround ? 0.4 : 0.22;
+    if (a.vx < target) a.vx = Math.min(target, a.vx + acc); else if (a.vx > target) a.vx = Math.max(target, a.vx - acc);
+
+    if (inp.jumpPressed) a.jumpBuf = 6;
+    if (a.jumpBuf > 0) {
+      if (a.coyote > 0) { a.vy = JUMP_V; a.jumpBuf = 0; a.coyote = 0; a.onGround = false; sfx.jump(); }
+      else if (a.wallDir !== 0) { a.vy = JUMP_V * 0.92; a.vx = -a.wallDir * 2.6; a.facing = -a.wallDir; a.jumpBuf = 0; sfx.jump(); }
+      else a.jumpBuf--;
+    }
+    if (!inp.jump && a.vy < -2) a.vy += 0.45;
+    a.vy += GRAV;
+    const sliding = a.wallDir !== 0 && hor === a.wallDir && a.vy > 0;
+    a.vy = Math.min(a.vy, sliding ? 1.1 : MAX_FALL);
+    if (inp.down && a.onPlat) a.dropT = 10;
+
+    // aim
+    let ax = hor, ay = ver;
+    if (inp.aim) { ax = inp.aim[0]; ay = inp.aim[1]; }
+    if (!ax && !ay) ax = a.facing;
+    a.aimX = ax; a.aimY = ay;
+
+    if (inp.shoot && a.arrows > 0 && a.shootCd === 0) {
+      if (ax) a.facing = Math.sign(ax);
+      fireArrow(a, ax, ay);
+    }
+    if (inp.dodge && a.dodgeCd === 0) {
+      let dx = hor, dy = ver;
+      if (inp.dodgeDir) { dx = inp.dodgeDir[0]; dy = inp.dodgeDir[1]; }
+      if (!dx && !dy) dx = a.facing;
+      const l = Math.hypot(dx, dy); a.dodgeX = dx / l; a.dodgeY = dy / l;
+      a.dodgeT = 11; a.dodgeCd = 42; sfx.dodge();
+    }
+  }
+
+  // move X
+  a.x += a.vx;
+  if (boxSolid(a.x, a.y, a.w, a.h)) {
+    if (a.vx > 0) a.x = Math.floor((a.x + a.w - 0.001) / T) * T - a.w;
+    else if (a.vx < 0) a.x = (Math.floor(a.x / T) + 1) * T;
+    a.vx = 0;
+  }
+  // move Y
+  const prevBottom = a.y + a.h;
+  const wasGround = a.onGround;
+  a.y += a.vy; a.onGround = false; a.onPlat = false;
+  if (boxSolid(a.x, a.y, a.w, a.h)) {
+    if (a.vy > 0) { a.y = Math.floor((a.y + a.h - 0.001) / T) * T - a.h; a.onGround = true; }
+    else if (a.vy < 0) a.y = (Math.floor(a.y / T) + 1) * T;
+    a.vy = 0;
+  } else if (a.vy >= 0 && a.dropT <= 0) {
+    const r = Math.floor((a.y + a.h - 0.001) / T), top = r * T;
+    if (prevBottom <= top + 0.01) {
+      const c0 = Math.floor(a.x / T), c1 = Math.floor((a.x + a.w - 0.001) / T);
+      for (let c = c0; c <= c1; c++) if (tileAt(c, r) === '-') { a.y = top - a.h; a.vy = 0; a.onGround = true; a.onPlat = true; break; }
+    }
+  }
+  if (a.onGround && !wasGround && a.prevY < a.y - 0.5) for (let i = 0; i < 3; i++) spawnPart(a.x + rand(a.w), a.y + a.h, rand(-0.6, 0.6), -rand(0.4), 12, '#8c80a3', 0.05);
+  a.x = mod(a.x, W); a.y = mod(a.y, H);
+  a.coyote = a.onGround ? 6 : Math.max(0, a.coyote - 1);
+  a.wallDir = 0;
+  if (!a.onGround) {
+    if (boxSolid(a.x + 1, a.y + 2, a.w, a.h - 4)) a.wallDir = 1;
+    else if (boxSolid(a.x - 1, a.y + 2, a.w, a.h - 4)) a.wallDir = -1;
+  }
+  if (Math.abs(a.vx) > 0.3 && a.onGround) a.runF++; else a.runF = 0;
+
+  // pick up arrows
+  for (const ar of game.arrows) {
+    if (ar.state !== 'stuck' || a.arrows >= MAX_ARROWS) continue;
+    if (inBox(ar.px, ar.py, a.x - 3, a.y - 3, a.w + 6, a.h + 6)) { ar.dead = true; a.arrows++; sfx.pickup(); }
+  }
+}
+
+function fireArrow(a, ax, ay) {
+  const l = Math.hypot(ax, ay), nx = ax / l, ny = ay / l;
+  const cx = a.x + a.w / 2, cy = a.y + 5;
+  game.arrows.push({ id: ++game.arrowId, x: mod(cx + nx * 6, W), y: mod(cy + ny * 6, H), vx: nx * ARROW_SPEED, vy: ny * ARROW_SPEED,
+    owner: a, grace: 10, state: 'fly', ang: Math.atan2(ny, nx), px: 0, py: 0, slot: a.slot, dead: false });
+  a.arrows--; a.shootCd = 12; sfx.shoot();
+}
+
+function deathParts(cx, cy, slot) {
+  const r = ROSTER[slot];
+  for (let i = 0; i < 26; i++) spawnPart(cx, cy, rand(-2.2, 2.2), rand(-3, 0.5), 30 + rand(30), i % 3 ? r.body : r.dark, 0.14);
+  for (let i = 0; i < 8; i++) spawnPart(cx, cy, rand(-1, 1), rand(-1.6, -0.2), 50 + rand(30), '#eee5d3', 0.03);
+}
+function catchParts(x, y) { for (let i = 0; i < 6; i++) spawnPart(x, y, rand(-1, 1), rand(-1, 1), 14, '#ffffff', 0); }
+
+function kill(victim, how) {
+  if (!victim.alive) return;
+  victim.alive = false;
+  const cx = victim.x + victim.w / 2, cy = victim.y + victim.h / 2;
+  deathParts(cx, cy, victim.slot);
+  if (net.role === 'host') net.events.push(['k', r1(cx), r1(cy), victim.slot]);
+  for (let i = 0; i < victim.arrows; i++) dropArrow(cx, cy, rand(-1.4, 1.4), rand(-2.5, -1), victim.slot);
+  victim.arrows = 0;
+  game.shake = how === 'stomp' ? 5 : 7;
+  sfx.death();
+}
+
+function dropArrow(x, y, vx, vy, slot) {
+  game.arrows.push({ id: ++game.arrowId, x, y, vx, vy, owner: null, grace: 0, state: 'drop', ang: Math.atan2(vy, vx), px: x, py: y, slot, dead: false });
+}
+
+// ---------- arrows ----------
+function stick(ar) {
+  ar.state = 'stuck';
+  const l = Math.hypot(ar.vx, ar.vy) || 1;
+  ar.px = mod(ar.x - ar.vx / l * 5, W); ar.py = mod(ar.y - ar.vy / l * 5, H);
+  ar.vx = ar.vy = 0;
+}
+function updateArrows() {
+  for (const ar of game.arrows) {
+    if (ar.dead) continue;
+    if (ar.state === 'fly') {
+      if (ar.grace > 0) ar.grace--;
+      for (let s = 0; s < 3 && ar.state === 'fly'; s++) {
+        ar.x = mod(ar.x + ar.vx / 3, W); ar.y = mod(ar.y + ar.vy / 3, H);
+        if (solidPx(ar.x, ar.y)) { ar.ang = Math.atan2(ar.vy, ar.vx); stick(ar); sfx.thunk(); break; }
+        for (const a of game.archers) {
+          if (!a.alive || (a === ar.owner && ar.grace > 0)) continue;
+          if (!inBox(ar.x, ar.y, a.x - 1, a.y - 1, a.w + 2, a.h + 2)) continue;
+          if (a.dodgeT > 0 && a.arrows < MAX_ARROWS) {
+            a.arrows++; ar.dead = true; sfx.catch();
+            catchParts(ar.x, ar.y);
+            if (net.role === 'host') net.events.push(['c', r1(ar.x), r1(ar.y)]);
+          } else {
+            kill(a, 'arrow');
+            ar.state = 'drop'; ar.vx = -ar.vx * 0.15; ar.vy = -1.8; ar.owner = null;
+          }
+          break;
+        }
+        if (ar.dead) break;
+      }
+      if (ar.state === 'fly') { ar.vy = Math.min(ar.vy + ARROW_G, 6); ar.ang = Math.atan2(ar.vy, ar.vx); }
+    } else if (ar.state === 'drop') {
+      ar.vy = Math.min(ar.vy + 0.18, 4);
+      const nx = mod(ar.x + ar.vx, W), ny = mod(ar.y + ar.vy, H);
+      if (solidPx(nx, ar.y)) ar.vx = -ar.vx * 0.3; else ar.x = nx;
+      const r = Math.floor((ny + 1) / T);
+      if (ar.vy > 0 && (solidPx(ar.x, ny + 1) || (tileAt(Math.floor(ar.x / T), r) === '-' && Math.floor(ar.y / T) < r))) {
+        ar.y = mod(r * T - 1, H);
+        ar.state = 'stuck'; ar.px = ar.x; ar.py = ar.y - 1; ar.ang = ar.vx >= 0 ? 0.08 : Math.PI - 0.08;
+      } else ar.y = ny;
+      if (ar.state === 'drop') ar.ang += 0.25;
+    }
+  }
+  game.arrows = game.arrows.filter(a => !a.dead);
+}
+
+// ---------- AI ----------
+function simShot(me, dx, dy, lead) {
+  const l = Math.hypot(dx, dy), nx = dx / l, ny = dy / l;
+  let x = mod(me.x + me.w / 2 + nx * 6, W), y = mod(me.y + 5 + ny * 6, H), vx = nx * ARROW_SPEED, vy = ny * ARROW_SPEED;
+  if (solidPx(x, y)) return null;
+  for (let t = 1; t < 60; t++) {
+    for (let s = 0; s < 3; s++) {
+      x = mod(x + vx / 3, W); y = mod(y + vy / 3, H);
+      if (solidPx(x, y)) return null;
+      for (const e of game.archers) {
+        if (!e.alive) continue;
+        const px = e.x + e.vx * t * lead, py = e.y + (e.onGround ? 0 : e.vy * t * lead * 0.5);
+        if (inBox(x, y, px - 1, py - 1, e.w + 2, e.h + 2)) return e === me ? null : e;
+      }
+    }
+    vy = Math.min(vy + ARROW_G, 6);
+  }
+  return null;
+}
+
+function findThreat(me) {
+  for (const ar of game.arrows) {
+    if (ar.state !== 'fly' || (ar.owner === me && ar.grace > 0)) continue;
+    let x = ar.x, y = ar.y, vx = ar.vx, vy = ar.vy;
+    for (let t = 0; t < 16; t++) {
+      let blocked = false;
+      for (let s = 0; s < 3; s++) {
+        x = mod(x + vx / 3, W); y = mod(y + vy / 3, H);
+        if (solidPx(x, y)) { blocked = true; break; }
+        if (inBox(x, y, me.x - 3, me.y - 3, me.w + 6, me.h + 6)) return { ar, t };
+      }
+      if (blocked) break;
+      vy = Math.min(vy + ARROW_G, 6);
+    }
+  }
+  return null;
+}
+
+function nearest(me, list, posFn) {
+  let best = null, bd = Infinity;
+  for (const o of list) {
+    const [x, y] = posFn(o);
+    const d = Math.hypot(wd(x - me.x, W), wd(y - me.y, H));
+    if (d < bd) { bd = d; best = o; }
+  }
+  return best ? { o: best, d: bd } : null;
+}
+
+function ledgeAbove(c, fr) {
+  for (let r = fr - 1; r >= fr - 3; r--) {
+    for (let dc = -2; dc <= 2; dc++) {
+      const t = tileAt(c + dc, r), above = tileAt(c + dc, r - 1);
+      if (above === '#') continue;
+      if (t === '-' && Math.abs(dc) <= 1) return true;
+      if (t === '#' && dc !== 0 && r < fr) return true;
+    }
+  }
+  return false;
+}
+
+function aiInput(a) {
+  const ai = a.ai, lv = ai.lv, inp = blankInput();
+  const enemies = game.archers.filter(e => e.alive && e !== a);
+  if (!enemies.length) return inp;
+  const cx = a.x + a.w / 2, cy = a.y + a.h / 2;
+
+  // pick a goal
+  if (--ai.goalT <= 0) {
+    ai.goalT = 15 + rand(15);
+    const tgt = nearest(a, enemies, e => [e.x, e.y]);
+    if (a.arrows === 0) {
+      const loose = nearest(a, game.arrows.filter(r => r.state !== 'fly'), r => [r.px || r.x, r.py || r.y]);
+      if (loose) { ai.gx = loose.o.px || loose.o.x; ai.gy = loose.o.py || loose.o.y; }
+      else { ai.gx = tgt.o.x + 4; ai.gy = tgt.o.y - 24; }
+    } else if (a.arrows < 3 && Math.random() < 0.5) {
+      const loose = nearest(a, game.arrows.filter(r => r.state === 'stuck'), r => [r.px, r.py]);
+      if (loose && loose.d < 90) { ai.gx = loose.o.px; ai.gy = loose.o.py; }
+      else { ai.gx = tgt.o.x + 4; ai.gy = tgt.o.y + 6; }
+    } else { ai.gx = tgt.o.x + 4 + rand(-20, 20); ai.gy = tgt.o.y + 6; }
+  }
+
+  // navigate: only route across the side edge when a gap in the side walls allows it
+  let dx = ai.gx - cx, dy = ai.gy - cy;
+  if (Math.abs(dx) > W / 2 && game.openRows.length) {
+    dx = wd(dx, W);
+    const myRow = Math.floor(cy / T);
+    if (!game.openRows.includes(myRow)) {
+      const row = game.openRows.reduce((b, r) => Math.abs(r - myRow) < Math.abs(b - myRow) ? r : b);
+      dy = row * T + T / 2 - cy;
+      const edgeX = dx < 0 ? T * 1.5 : W - T * 1.5;
+      if (Math.abs(dy) > 10) dx = edgeX - cx;
+    }
+  }
+  if (Math.abs(dy) > H / 2) dy = wd(dy, H);
+  let dir = ai.wanderT > 0 ? ai.wander : (Math.abs(dx) > 3 ? Math.sign(dx) : 0);
+  if (ai.wanderT > 0) ai.wanderT--;
+  // step away from someone dropping onto us
+  for (const e of enemies) {
+    const ex = wd(e.x - a.x, W), ey = wd(e.y - a.y, H);
+    if (Math.abs(ex) < 12 && ey < -4 && ey > -40 && e.vy > 0 && Math.random() < lv.dodge) dir = ex > 0 ? -1 : 1;
+  }
+  if (dir < 0) inp.left = true; else if (dir > 0) inp.right = true;
+  const jump = () => { inp.jumpPressed = true; ai.jumpHold = 18; };
+  const c = Math.floor(cx / T), fr = Math.floor((a.y + a.h + 1) / T);
+  if (a.onGround) {
+    const groundAhead = dir && /[#-]/.test(tileAt(Math.floor((cx + dir * 10) / T), fr));
+    if (dir && boxSolid(a.x + dir * 3, a.y, a.w, a.h)) jump();
+    else if (dy < -22 && ledgeAbove(c, fr)) jump();
+    else if (dy > 22 && a.onPlat && Math.abs(dx) < 40) inp.down = true;
+    else if (dir && !groundAhead && dy < 8) jump();
+    else if (Math.random() < 0.004) jump();
+  } else if (a.wallDir && a.vy > -0.5 && (dy < -16 || ai.wanderT > 0) && Math.random() < 0.2) jump();
+  if (ai.jumpHold > 0) { inp.jump = true; ai.jumpHold--; }
+
+  // stuck detection
+  const dist = Math.hypot(dx, dy);
+  if (dist < ai.best - 8) { ai.best = dist; ai.stuckT = 0; }
+  if (++ai.stuckT >= 80) {
+    if (dist > 24) { ai.wander = Math.random() < 0.5 ? -1 : 1; ai.wanderT = 50 + rand(40); jump(); ai.goalT = ai.wanderT; }
+    ai.best = Infinity; ai.stuckT = 0;
+  }
+
+  // evade arrows
+  const th = findThreat(a);
+  if (th && !ai.seen.has(th.ar.id)) {
+    ai.seen.add(th.ar.id);
+    if (Math.random() < lv.dodge) {
+      ai.evadeT = Math.max(0, Math.round(lv.evade + rand(-1, 3)));
+      ai.evadeArrow = th.ar;
+      ai.evadeMode = a.dodgeCd === 0 ? (Math.random() < lv.catchP && a.arrows < MAX_ARROWS ? 'catch' : 'dodge') : 'jump';
+    }
+  }
+  if (ai.evadeT >= 0 && ai.evadeT-- === 0 && ai.evadeArrow && ai.evadeArrow.state === 'fly' && !ai.evadeArrow.dead) {
+    const ar = ai.evadeArrow;
+    if (ai.evadeMode === 'jump' || a.dodgeCd > 0) { if (a.onGround) jump(); else if (a.wallDir) jump(); }
+    else {
+      inp.dodge = true;
+      if (ai.evadeMode === 'catch') inp.dodgeDir = [Math.sign(-ar.vx) || a.facing, 0];
+      else {
+        const rx = wd(cx - ar.x, W), ry = wd(cy - ar.y, H);
+        let px = -ar.vy, py = ar.vx;
+        if (px * rx + py * ry < 0) { px = -px; py = -py; }
+        inp.dodgeDir = [Math.round(px / Math.hypot(px, py)), Math.round(py / Math.hypot(px, py))];
+        if (!inp.dodgeDir[0] && !inp.dodgeDir[1]) inp.dodgeDir = [a.facing, -1];
+      }
+    }
+    ai.evadeArrow = null;
+  }
+
+  // shoot
+  if (ai.shotT > 0) ai.shotT--;
+  if (a.arrows > 0 && ai.shotT <= 0 && a.shootCd === 0 && a.dodgeT === 0) {
+    let sol = null;
+    if (game.frame % 2 === 0) for (const d of DIRS) { const e = simShot(a, d[0], d[1], lv.lead); if (e) { sol = d; break; } }
+    if (sol) ai.seeT++; else ai.seeT = Math.max(0, ai.seeT - 1);
+    if (sol && ai.seeT >= lv.react) {
+      let d = sol;
+      if (Math.random() > lv.acc) d = pick(DIRS.filter(o => Math.abs(o[0] - sol[0]) + Math.abs(o[1] - sol[1]) === 1));
+      inp.shoot = true; inp.aim = d;
+      ai.shotT = lv.gap + rand(lv.gap * 0.6); ai.seeT = 0;
+    }
+  }
+  return inp;
+}
+
+// ---------- simulation step ----------
+function step() {
+  game.frame++;
+  if (net.role === 'guest') { guestTick(); pressed.clear(); return; }
+  simulate();
+  pressed.clear();
+  if (net.role === 'host' && net.matchOn) broadcast();
+}
+
+function simulate() {
+  if (game.paused || game.mode !== 'play') { updateParts(); return; }
+  if (game.freezeT > 0) { game.freezeT--; if (game.freezeT === 0) game.banner = null; }
+  const frozen = game.freezeT > 0;
+
+  for (const a of game.archers) {
+    if (!a.alive) continue;
+    let inp = a.ai ? aiInput(a) : a.remote ? remoteInput(a) : humanInput();
+    if (frozen) inp = blankInput();
+    updateArcher(a, inp);
+  }
+
+  // stomps
+  for (const a of game.archers) for (const b of game.archers) {
+    if (a === b || !a.alive || !b.alive || a.vy <= 0 || b.dodgeT > 0) continue;
+    if (!boxesOverlap(a, b)) continue;
+    if (wd(a.prevY + a.h - b.y, H) <= 4) { kill(b, 'stomp'); a.vy = -3.8; sfx.stomp(); }
+  }
+  updateArrows();
+  updateParts();
+  if (game.shake > 0) game.shake *= 0.85;
+
+  const alive = game.archers.filter(a => a.alive);
+  game.roundT++;
+  if (game.endT === 0 && (alive.length <= 1 || game.roundT > ROUND_LIMIT)) game.endT = 100;
+  if (game.endT > 0) {
+    if (game.endT === 100) {
+      const winner = alive.length === 1 && game.roundT <= ROUND_LIMIT ? alive[0] : null;
+      game.pendingWinner = winner;
+      game.banner = winner ? { win: winner.slot, sub: '' } : { top: 'Draw', sub: game.roundT > ROUND_LIMIT ? 'Time ran out' : 'No one survived' };
+    }
+    if (--game.endT === 0) {
+      const w = game.pendingWinner;
+      if (w && w.alive) w.score++;
+      const champ = game.archers.find(a => a.score >= game.settings.goal);
+      if (champ) endMatch(champ); else startRound();
+    }
+  }
+}
+
+const displayName = a => a.slot === game.mySlot ? 'You' : a.name;
+
+function endMatch(champ) {
+  game.mode = 'over'; game.banner = null;
+  if (game.attract) { setTimeout(() => { if (game.attract) startMatch(game.settings, true); }, 1500); return; }
+  showEnd(champ, net.role !== 'guest');
+}
+function showEnd(champ, canRestart) {
+  el.endTitle.textContent = champ.slot === game.mySlot ? 'You win the match' : champ.name + ' wins the match';
+  el.endTitle.style.color = champ.body;
+  const line = game.archers.slice().sort((a, b) => b.score - a.score).map(a => displayName(a) + ' ' + a.score).join(' · ');
+  el.endText.textContent = canRestart ? line : line + '. Waiting for the host to start a rematch.';
+  el.endBtns.hidden = !canRestart;
+  el.endOv.hidden = false;
+  if (canRestart) el.againBtn.focus();
+}
+
+// ---------- particles ----------
+function spawnPart(x, y, vx, vy, life, color, g) { if (game.parts.length < 500) game.parts.push({ x, y, vx, vy, life, color, g }); }
+function updateParts() {
+  for (const p of game.parts) { p.vy += p.g; p.x = mod(p.x + p.vx, W); p.y = mod(p.y + p.vy, H); p.life--; if (p.g && solidPx(p.x, p.y)) { p.vx *= 0.3; p.vy = 0; p.g = 0; } }
+  game.parts = game.parts.filter(p => p.life > 0);
+}
+
+// ---------- online: host ----------
+function makeCode() {
+  const abc = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let s = ''; for (let i = 0; i < 5; i++) s += abc[Math.floor(Math.random() * abc.length)];
+  return s;
+}
+const roomLink = code => location.origin + location.pathname + '#' + code;
+
+function hostOnline() {
+  ensureAudio();
+  if (!window.Peer) { lobbyStatus('Online play could not load. Check your connection and reload.'); showOnly('lobbyOv'); return; }
+  closeNet();
+  net.role = 'host'; net.code = makeCode(); net.matchOn = false;
+  el.roomLink.value = roomLink(net.code);
+  el.onlineStartBtn.disabled = true;
+  lobbyStatus('Opening room…');
+  showOnly('lobbyOv'); renderSeats();
+  const peer = new Peer(ROOM_PREFIX + net.code.toLowerCase(), { debug: 0 });
+  net.peer = peer;
+  peer.on('open', () => { el.onlineStartBtn.disabled = false; lobbyStatus('Room open. Waiting for friends — you can start any time.'); });
+  peer.on('connection', conn => {
+    conn.on('data', d => onGuestData(conn, d));
+    conn.on('close', () => onGuestGone(conn));
+    conn.on('error', () => onGuestGone(conn));
+  });
+  peer.on('disconnected', () => { if (net.peer === peer && !peer.destroyed) peer.reconnect(); });
+  peer.on('error', err => {
+    if (net.peer !== peer) return;
+    if (err.type === 'unavailable-id') { hostOnline(); return; }
+    if (err.type === 'peer-unavailable') return;
+    lobbyStatus('Connection problem (' + err.type + '). Close the room and try again.');
+  });
+}
+
+function onGuestData(conn, d) {
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 'hello') {
+    if (net.guests.size >= 3 && !net.guests.has(conn.peer)) { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 300); return; }
+    conn.guestName = cleanName(d.name) || 'Friend';
+    conn.lastSeen = performance.now();
+    net.guests.set(conn.peer, conn);
+    if (net.matchOn) seatMidMatch(conn); else conn.send({ t: 'slot', slot: null, lobby: true });
+    renderSeats();
+  } else if (d.t === 'in') {
+    conn.lastSeen = performance.now();
+    const prev = net.inputs.get(conn.peer);
+    const st = { l: !!d.l, r: !!d.r, u: !!d.u, d: !!d.d, j: !!d.j, cj: +d.cj || 0, cs: +d.cs || 0, cd: +d.cd || 0 };
+    st.sj = prev ? prev.sj : st.cj; st.ss = prev ? prev.ss : st.cs; st.sd = prev ? prev.sd : st.cd;
+    net.inputs.set(conn.peer, st);
+  }
+}
+
+function seatMidMatch(conn) {
+  const a = game.archers.find(x => x.remote === conn.peer) || game.archers.find(x => x.ai);
+  if (!a) { conn.send({ t: 'slot', slot: null }); return; }
+  a.ai = null; a.remote = conn.peer; a.name = conn.guestName;
+  conn.send({ t: 'slot', slot: a.slot });
+}
+
+function onGuestGone(conn) {
+  if (!net.guests.has(conn.peer)) return;
+  net.guests.delete(conn.peer); net.inputs.delete(conn.peer);
+  const a = game.archers.find(x => x.remote === conn.peer);
+  if (a) { a.remote = null; a.name = ROSTER[a.slot].name; a.ai = { lv: AI_LEVELS[game.settings.diff] }; resetAI(a); }
+  renderSeats();
+}
+
+function startOnlineMatch() {
+  const s = readSetup(); s.mode = 'play';
+  const seats = [{ kind: 'local', name: myName() }];
+  for (const conn of net.guests.values()) seats.push({ kind: 'remote', name: conn.guestName, peer: conn.peer });
+  hideOverlays();
+  net.matchOn = true;
+  startMatch(s, false, seats.slice(0, 4));
+  for (const conn of net.guests.values()) {
+    const a = game.archers.find(x => x.remote === conn.peer);
+    conn.send({ t: 'slot', slot: a ? a.slot : null });
+  }
+}
+
+function broadcast() {
+  if (!net.guests.size) { net.events.length = 0; return; }
+  // guests send input at least every half second; silence means they left
+  if (game.frame % 60 === 0) for (const conn of [...net.guests.values()]) {
+    if (performance.now() - (conn.lastSeen || 0) > 8000) { try { conn.close(); } catch (e) {} onGuestGone(conn); }
+  }
+  if (!net.guests.size) return;
+  const snap = {
+    t: 's', m: game.mode, p: game.paused ? 1 : 0, mi: game.mapIdx, rd: game.round, fz: game.freezeT, b: game.banner,
+    sh: r1(game.shake), g: game.settings.goal,
+    a: game.archers.map(a => [a.slot, r1(a.x), r1(a.y), r2(a.vx), r2(a.vy), a.facing, a.aimX, a.aimY, a.arrows, a.alive ? 1 : 0,
+      a.dodgeT, a.onGround ? 1 : 0, a.runF, a.score, a.youT, a.name]),
+    r: game.arrows.map(r => [r1(r.x), r1(r.y), r2(r.ang), r.state === 'fly' ? 0 : r.state === 'drop' ? 1 : 2, r.slot]),
+    e: net.events.splice(0),
+  };
+  for (const conn of net.guests.values()) if (conn.open) { try { conn.send(snap); } catch (e) {} }
+}
+
+function renderSeats() {
+  const rows = [{ name: myName() + ' (you)', who: 'Host' }];
+  for (const conn of net.guests.values()) rows.push({ name: conn.guestName, who: 'Joined' });
+  const want = Math.max(rows.length, readSetup().foes + 1);
+  for (let i = rows.length; i < Math.min(4, want); i++) rows.push({ name: ROSTER[i].name, who: 'AI' });
+  el.seats.innerHTML = rows.map((r, i) => `<li style="--c:${ROSTER[i].body}"><span class="chip"></span>${esc(r.name)}<span class="who">${r.who}</span></li>`).join('');
+}
+
+// ---------- online: guest ----------
+function showJoin(code) {
+  net.code = code;
+  el.joinTitle.textContent = 'Join room ' + code;
+  el.joinName.value = el.nameInput.value;
+  joinStatus('Pick a name, then join.');
+  el.joinBtn.disabled = false;
+  showOnly('joinOv');
+  el.joinName.focus();
+}
+
+function joinRoom() {
+  if (net.role === 'guest') return;
+  ensureAudio();
+  if (!window.Peer) { joinStatus('Online play could not load. Check your connection and reload.'); return; }
+  const name = cleanName(el.joinName.value) || 'Friend';
+  el.nameInput.value = name; store.set('qs-name', name);
+  closeNet();
+  net.role = 'guest'; game.attract = false; game.mySlot = -1; net.lastSnapAt = 0; net.wasOver = false;
+  game.archers = []; game.arrows = []; game.parts = []; game.banner = { top: 'Connecting', sub: '' };
+  el.joinBtn.disabled = true;
+  joinStatus('Connecting…');
+  const peer = new Peer(undefined, { debug: 0 });
+  net.peer = peer;
+  const timer = setTimeout(() => { if (net.peer === peer && !net.host?.open) joinStatus('Still connecting. Some strict networks block direct connections; try another network if this does not finish.'); }, 12000);
+  peer.on('open', () => {
+    const conn = peer.connect(ROOM_PREFIX + net.code.toLowerCase(), { reliable: true, serialization: 'json' });
+    net.host = conn;
+    conn.on('open', () => { clearTimeout(timer); conn.send({ t: 'hello', name }); sendGuestInput(); joinStatus('Connected. Waiting for the host to start the match.'); });
+    conn.on('data', onHostData);
+    conn.on('close', hostGone);
+    conn.on('error', hostGone);
+  });
+  peer.on('error', err => {
+    if (net.peer !== peer) return;
+    clearTimeout(timer);
+    el.joinBtn.disabled = false; net.role = 'off';
+    joinStatus(err.type === 'peer-unavailable' ? 'Room not found. It may have closed; ask your friend for a fresh link.' : 'Could not connect (' + err.type + '). Try again.');
+  });
+}
+
+function onHostData(d) {
+  if (!d || typeof d !== 'object') return;
+  if (d.t === 's') applySnap(d);
+  else if (d.t === 'slot') {
+    game.mySlot = d.slot === null || d.slot === undefined ? -1 : d.slot;
+    if (!d.lobby && game.mySlot < 0) joinStatus('All seats are taken. You are watching until a seat frees up.');
+  } else if (d.t === 'full') joinStatus('This room is full (4 archers).');
+}
+
+function applySnap(s) {
+  net.lastSnapAt = performance.now();
+  if (!el.joinOv.hidden) hideOverlays();
+  if (s.mi !== game.mapIdx || grid !== MAPS[s.mi].rows) { game.mapIdx = s.mi; grid = MAPS[s.mi].rows; buildMapCanvas(); }
+  game.mode = s.m; game.round = s.rd; game.freezeT = s.fz; game.banner = s.b; game.shake = s.sh; game.settings.goal = s.g;
+  game.archers = s.a.map(v => {
+    const r = ROSTER[v[0]];
+    return { slot: v[0], body: r.body, dark: r.dark, x: v[1], y: v[2], vx: v[3], vy: v[4], facing: v[5], aimX: v[6], aimY: v[7],
+      arrows: v[8], alive: !!v[9], dodgeT: v[10], onGround: !!v[11], runF: v[12], score: v[13], youT: v[14], name: cleanName(v[15]) || r.name, w: 8, h: 12 };
+  });
+  game.arrows = s.r.map(v => ({ x: v[0], y: v[1], ang: v[2], state: ['fly', 'drop', 'stuck'][v[3]] || 'stuck', slot: v[4] & 3 }));
+  for (const ev of s.e || []) {
+    if (ev[0] === 's' && sfx[ev[1]]) sfx[ev[1]]();
+    else if (ev[0] === 'k') deathParts(ev[1], ev[2], ev[3] & 3);
+    else if (ev[0] === 'c') catchParts(ev[1], ev[2]);
+  }
+  if (!!s.p !== game.paused) {
+    game.paused = !!s.p;
+    el.pauseTitle.textContent = 'Host paused the game';
+    el.pauseBtns.hidden = true;
+    el.pauseOv.hidden = !game.paused;
+  }
+  if (s.m === 'over' && !net.wasOver) {
+    const champ = game.archers.slice().sort((a, b) => b.score - a.score)[0];
+    if (champ) showEnd(champ, false);
+  } else if (s.m === 'play' && net.wasOver) el.endOv.hidden = true;
+  net.wasOver = s.m === 'over';
+}
+
+function guestTick() {
+  updateParts();
+  for (const a of game.archers) if (a.alive && a.dodgeT > 0 && Math.random() < 0.6) spawnPart(a.x + rand(a.w), a.y + rand(a.h), 0, 0, 10, a.body, 0);
+  if (game.shake > 0) game.shake *= 0.85;
+  if (net.host && net.host.open && game.frame % 30 === 0) sendGuestInput();
+}
+
+function sendGuestInput() {
+  const c = net.host;
+  if (!c || !c.open) return;
+  try {
+    c.send({ t: 'in', l: held('left') ? 1 : 0, r: held('right') ? 1 : 0, u: held('up') ? 1 : 0, d: held('down') ? 1 : 0, j: held('jump') ? 1 : 0,
+      cj: net.cnt.j, cs: net.cnt.s, cd: net.cnt.d });
+  } catch (e) {}
+}
+
+function hostGone() {
+  if (net.role !== 'guest') return;
+  closeNet();
+  el.endTitle.textContent = 'The host left';
+  el.endTitle.style.color = '';
+  el.endText.textContent = 'The room has closed. You can play solo, or ask for a new link.';
+  el.endBtns.hidden = false;
+  el.againBtn.textContent = 'Play solo';
+  showOnly('endOv');
+}
+
+function closeNet() {
+  const peer = net.peer;
+  net.peer = null; net.host = null; net.role = 'off'; net.matchOn = false;
+  net.guests.clear(); net.inputs.clear(); net.events.length = 0;
+  if (peer) { try { peer.destroy(); } catch (e) {} }
+}
+
+// ---------- rendering ----------
+const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) ^ 0x5bd1e995; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+
+const bg = document.createElement('canvas'); bg.width = W; bg.height = H;
+(function drawBg() {
+  const g = bg.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, '#1b1530'); grd.addColorStop(0.6, '#33244a'); grd.addColorStop(1, '#4a2a45');
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 60; i++) { g.fillStyle = hash(i, 9) > 0.7 ? '#fff4d8' : '#8f86b8'; g.fillRect(Math.floor(hash(i, 1) * W), Math.floor(hash(i, 2) * H * 0.6), 1, 1); }
+  g.fillStyle = '#efe0c0'; g.beginPath(); g.arc(250, 52, 18, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#d8c7a6'; g.fillRect(242, 46, 4, 3); g.fillRect(254, 58, 5, 3);
+  const towers = (col, base, n, seed) => { g.fillStyle = col; for (let i = 0; i < n; i++) { const w = 14 + hash(i, seed) * 22, x = hash(i, seed + 1) * W, h = 60 + hash(i, seed + 2) * 90; g.fillRect(x, base - h, w, h + 40); g.fillRect(x - 2, base - h - 6, w + 4, 6); for (let k = 0; k < w; k += 6) g.fillRect(x - 2 + k, base - h - 10, 3, 4); } };
+  towers('#2a2040', H, 12, 30); towers('#221a35', H + 10, 9, 60);
+})();
+
+const mapCv = document.createElement('canvas'); mapCv.width = W; mapCv.height = H;
+function buildMapCanvas() {
+  const g = mapCv.getContext('2d'); g.clearRect(0, 0, W, H);
+  const seed = game.mapIdx * 100;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const t = tileAt(c, r), x = c * T, y = r * T;
+    if (t === '#') {
+      g.fillStyle = '#4a4160'; g.fillRect(x, y, T, T);
+      g.fillStyle = '#3a3250';
+      for (let row = 0; row < 4; row++) { g.fillRect(x, y + row * 4 + 3, T, 1); const off = (row + c) % 2 ? 4 : 10; g.fillRect(x + off, y + row * 4, 1, 3); }
+      if (hash(c + seed, r) > 0.7) { g.fillStyle = '#564b70'; g.fillRect(x + 2, y + 1, 5, 2); }
+      if (!isSolid(c, r - 1)) { g.fillStyle = '#7c6f99'; g.fillRect(x, y, T, 2); g.fillStyle = '#5f8f4a'; for (let k = 0; k < T; k += 2) if (hash(c * 16 + k, r + seed) > 0.45) g.fillRect(x + k, y, 2, 1 + Math.floor(hash(k, c) * 2)); }
+      if (!isSolid(c, r + 1)) { g.fillStyle = '#2b2440'; g.fillRect(x, y + T - 2, T, 2); }
+      if (!isSolid(c - 1, r)) { g.fillStyle = '#5c5277'; g.fillRect(x, y, 1, T); }
+      if (!isSolid(c + 1, r)) { g.fillStyle = '#2f2843'; g.fillRect(x + T - 1, y, 1, T); }
+    } else if (t === '-') {
+      g.fillStyle = '#8a5a34'; g.fillRect(x, y, T, 4);
+      g.fillStyle = '#b07a46'; g.fillRect(x, y, T, 1);
+      g.fillStyle = '#5a3820'; g.fillRect(x, y + 4, T, 1); g.fillRect(x + 7, y, 1, 4);
+      if (tileAt(c - 1, r) !== '-' || tileAt(c + 1, r) !== '-') { g.fillStyle = '#5a3820'; g.fillRect(x + (tileAt(c - 1, r) !== '-' ? 2 : T - 4), y + 5, 2, 3); }
+    }
+  }
+}
+
+function drawWrapped(x, y, w, h, fn) {
+  for (const ox of [0, -W, W]) for (const oy of [0, -H, H]) {
+    const X = x + ox, Y = y + oy;
+    if (X + w < -4 || X > W + 4 || Y + h < -12 || Y > H + 4) continue;
+    fn(X, Y);
+  }
+}
+
+function drawArcher(a) {
+  drawWrapped(a.x, a.y, a.w, a.h, (X, Y) => {
+    const x = Math.round(X), y = Math.round(Y), f = a.facing;
+    const flash = a.dodgeT > 0 && game.frame % 4 < 2;
+    const body = flash ? '#ffffff' : a.body, dark = flash ? '#d8d8ff' : a.dark;
+    ctx.fillStyle = '#2a2236';
+    const step = a.onGround && a.runF ? Math.floor(a.runF / 5) % 2 : 0;
+    if (!a.onGround) { ctx.fillRect(x + 1, y + 9, 2, 2); ctx.fillRect(x + 5, y + 10, 2, 2); }
+    else { ctx.fillRect(x + 1 + step, y + 10, 2, 2); ctx.fillRect(x + 5 - step, y + 10, 2, 2); }
+    ctx.fillStyle = dark; ctx.fillRect(x, y + 3, 8, 7);
+    ctx.fillStyle = body; ctx.fillRect(x + 1, y + 4, 6, 6);
+    ctx.fillStyle = '#3b2a1c'; ctx.fillRect(x + 1, y + 8, 6, 1);
+    ctx.fillStyle = dark; ctx.fillRect(x + 1, y, 6, 4); ctx.fillRect(x + (f > 0 ? 0 : 6), y + 1, 2, 3);
+    ctx.fillStyle = body; ctx.fillRect(x + 2, y, 4, 1);
+    ctx.fillStyle = '#f0c9a0'; ctx.fillRect(x + (f > 0 ? 4 : 2), y + 2, 2, 2);
+    ctx.fillStyle = '#1a1424'; ctx.fillRect(x + (f > 0 ? 5 : 2), y + 2, 1, 1);
+    const l = Math.hypot(a.aimX, a.aimY) || 1, nx = a.aimX / l, ny = a.aimY / l;
+    const bx = x + 4 + nx * 5, by = y + 6 + ny * 5, px = -ny, py = nx;
+    ctx.fillStyle = '#c99357';
+    for (let k = -3; k <= 3; k++) { const bend = (3 - Math.abs(k)) * 0.5; ctx.fillRect(Math.round(bx + px * k + nx * bend), Math.round(by + py * k + ny * bend), 1, 1); }
+    ctx.fillStyle = a.body;
+    for (let i = 0; i < a.arrows; i++) ctx.fillRect(x + 4 - a.arrows + i * 2, y - 4, 1, 2);
+    if (a.youT > 0 && a.slot === game.mySlot && game.frame % 20 < 14) { ctx.fillStyle = '#eee5d3'; ctx.fillRect(x + 2, y - 10, 5, 1); ctx.fillRect(x + 3, y - 9, 3, 1); ctx.fillRect(x + 4, y - 8, 1, 1); }
+  });
+}
+
+function drawArrow(ar) {
+  const ca = Math.cos(ar.ang), sa = Math.sin(ar.ang), body = ROSTER[ar.slot].body;
+  drawWrapped(ar.x - 10, ar.y - 10, 20, 20, (X, Y) => {
+    const x = X + 10, y = Y + 10;
+    ctx.fillStyle = '#d9c6a0';
+    for (let k = 1; k <= 8; k++) ctx.fillRect(Math.round(x - ca * k), Math.round(y - sa * k), 1, 1);
+    ctx.fillStyle = '#f4f4ff'; ctx.fillRect(Math.round(x), Math.round(y), 1, 1); ctx.fillRect(Math.round(x - ca), Math.round(y - sa), 1, 1);
+    ctx.fillStyle = body;
+    for (let k = 7; k <= 9; k++) { ctx.fillRect(Math.round(x - ca * k + sa), Math.round(y - sa * k - ca), 1, 1); ctx.fillRect(Math.round(x - ca * k - sa), Math.round(y - sa * k + ca), 1, 1); }
+  });
+}
+
+function textCentered(str, y, size, color) {
+  ctx.font = `700 ${size}px Silkscreen, ui-monospace, monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#120e1a'; ctx.fillText(str, W / 2 + 1, y + 1);
+  ctx.fillStyle = color; ctx.fillText(str, W / 2, y);
+}
+
+function render() {
+  ctx.save();
+  if (game.shake > 0.5) ctx.translate(Math.round(rand(-game.shake, game.shake)), Math.round(rand(-game.shake, game.shake)));
+  ctx.drawImage(bg, 0, 0); ctx.drawImage(mapCv, 0, 0);
+  for (const ar of game.arrows) drawArrow(ar);
+  for (const a of game.archers) if (a.alive) drawArcher(a);
+  for (const p of game.parts) { ctx.fillStyle = p.color; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
+  ctx.restore();
+  const b = game.banner;
+  if (b) {
+    let top = b.top, color = b.color || '#f4a53c';
+    if (b.win !== undefined) {
+      const w = game.archers.find(a => a.slot === b.win);
+      top = b.win === game.mySlot ? 'You take it' : (w ? w.name : ROSTER[b.win & 3].name) + ' takes it';
+      color = ROSTER[b.win & 3].body;
+    }
+    ctx.fillStyle = 'rgba(18,14,26,.55)'; ctx.fillRect(0, 96, W, b.sub ? 44 : 30);
+    textCentered(String(top).toUpperCase(), 110, 16, color);
+    if (b.sub) textCentered(String(b.sub).toUpperCase(), 128, 8, '#eee5d3');
+  }
+  if (game.attract && game.mode === 'play' && net.role === 'off') textCentered('DEMO', 10, 8, '#a69cba');
+  if (net.role === 'guest' && net.lastSnapAt && game.mySlot < 0) textCentered('WATCHING', 10, 8, '#a69cba');
+  if (net.role === 'guest' && net.lastSnapAt && performance.now() - net.lastSnapAt > 1500) textCentered('WAITING FOR HOST…', 22, 8, '#f4a53c');
+  if (net.role === 'host' && net.matchOn) textCentered('ROOM ' + net.code + ' · ' + (net.guests.size + 1) + ' PLAYERS', 10, 8, '#a69cba');
+}
+
+// ---------- scoreboard ----------
+let lastBoard = '';
+function updateBoard() {
+  const goal = game.settings.goal;
+  const html = game.archers.map(a => {
+    const pips = '■'.repeat(Math.min(a.score, goal)) + '□'.repeat(Math.max(0, goal - a.score));
+    return `<div class="slot${a.alive ? '' : ' dead'}" style="--c:${a.body}"><span class="chip"></span><span class="nm">${esc(displayName(a))}</span><span class="pips" aria-label="${a.score} of ${goal} rounds">${pips}</span><span class="q" aria-label="${a.arrows} arrows">${a.arrows}↑</span></div>`;
+  }).join('');
+  if (html !== lastBoard) { el.board.innerHTML = html; lastBoard = html; }
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const el = {
+  board: $('board'), startOv: $('startOv'), pauseOv: $('pauseOv'), endOv: $('endOv'), lobbyOv: $('lobbyOv'), joinOv: $('joinOv'),
+  endTitle: $('endTitle'), endText: $('endText'), endBtns: $('endBtns'), againBtn: $('againBtn'),
+  pauseTitle: $('pauseTitle'), pauseBtns: $('pauseBtns'), roomLink: $('room-link'), seats: $('seats'),
+  onlineStartBtn: $('onlineStartBtn'), nameInput: $('player-name'), joinName: $('join-name'), joinBtn: $('joinBtn'), joinTitle: $('joinTitle'),
+};
+const OVERLAYS = ['startOv', 'lobbyOv', 'joinOv', 'pauseOv', 'endOv'];
+function hideOverlays() { OVERLAYS.forEach(k => { el[k].hidden = true; }); }
+function showOnly(k) { hideOverlays(); el[k].hidden = false; }
+const lobbyStatus = t => { $('lobbyStatus').textContent = t; };
+const joinStatus = t => { $('joinStatus').textContent = t; };
+const radio = name => document.querySelector(`input[name="${name}"]:checked`).value;
+function readSetup() { return { mode: radio('mode'), foes: +radio('foes'), diff: radio('diff'), goal: +radio('goal') }; }
+
+function beginSolo() {
+  ensureAudio();
+  if (net.role === 'guest') closeNet();
+  el.againBtn.textContent = 'Rematch';
+  hideOverlays();
+  const s = readSetup();
+  startMatch(s, false, s.mode === 'play' ? [{ kind: 'local', name: myName() }] : []);
+}
+function togglePause() {
+  game.paused = !game.paused;
+  el.pauseTitle.textContent = net.role === 'host' ? 'Paused for everyone' : 'Paused';
+  el.pauseBtns.hidden = false;
+  el.pauseOv.hidden = !game.paused;
+  if (game.paused) $('resumeBtn').focus();
+}
+function demo() { startMatch({ mode: 'watch', foes: 3, diff: 'normal', goal: 5 }, true); }
+function toMenu() {
+  closeNet();
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  el.againBtn.textContent = 'Rematch';
+  showOnly('startOv');
+  demo();
+}
+function backToLobby() {
+  net.matchOn = false; game.paused = false;
+  for (const conn of net.guests.values()) if (conn.open) conn.send({ t: 'slot', slot: null, lobby: true });
+  demo();
+  showOnly('lobbyOv'); renderSeats();
+}
+
+$('startBtn').addEventListener('click', beginSolo);
+$('hostBtn').addEventListener('click', hostOnline);
+$('onlineStartBtn').addEventListener('click', startOnlineMatch);
+$('closeRoomBtn').addEventListener('click', toMenu);
+$('joinBtn').addEventListener('click', joinRoom);
+$('leaveBtn').addEventListener('click', toMenu);
+$('againBtn').addEventListener('click', () => { if (net.role === 'host') startOnlineMatch(); else if (net.role === 'off' && el.againBtn.textContent === 'Play solo') toMenu(); else beginSolo(); });
+$('setupBtn').addEventListener('click', () => { if (net.role === 'host') backToLobby(); else toMenu(); });
+$('resumeBtn').addEventListener('click', togglePause);
+$('quitBtn').addEventListener('click', () => { if (net.role === 'host') backToLobby(); else toMenu(); });
+$('copyBtn').addEventListener('click', () => {
+  const done = () => { $('copyBtn').textContent = 'Copied'; setTimeout(() => { $('copyBtn').textContent = 'Copy'; }, 1500); };
+  if (navigator.clipboard) navigator.clipboard.writeText(el.roomLink.value).then(done, () => el.roomLink.select());
+  else el.roomLink.select();
+});
+el.roomLink.addEventListener('focus', () => el.roomLink.select());
+document.querySelectorAll('input[name="snd"]').forEach(r => r.addEventListener('change', () => { soundOn = radio('snd') === 'on'; }));
+document.querySelectorAll('input[name="foes"]').forEach(r => r.addEventListener('change', () => { if (net.role === 'host') renderSeats(); }));
+el.nameInput.value = store.get('qs-name') || '';
+el.nameInput.addEventListener('change', () => { store.set('qs-name', cleanName(el.nameInput.value)); if (net.role === 'host') renderSeats(); });
+
+// ---------- loop ----------
+// rAF drives play while visible; a worker timer keeps a hosted match running if the host's tab is in the background
+let last = performance.now(), acc = 0;
+function tick(now) {
+  acc += Math.min(250, now - last); last = now;
+  while (acc >= 1000 / 60) { step(); acc -= 1000 / 60; }
+}
+function frame(now) {
+  tick(now);
+  render();
+  if (game.frame % 6 === 0) updateBoard();
+  requestAnimationFrame(frame);
+}
+try {
+  const worker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 16)'], { type: 'text/javascript' })));
+  let beat = 0;
+  worker.onmessage = () => {
+    if (!document.hidden) return;
+    if (net.role === 'host') tick(performance.now());
+    else if (net.role === 'guest' && ++beat % 30 === 0) sendGuestInput();
+  };
+} catch (e) {}
+
+demo();
+const code = (location.hash || '').slice(1).toUpperCase();
+if (/^[A-Z0-9]{5}$/.test(code)) showJoin(code);
+updateBoard();
+if (document.fonts && document.fonts.load) document.fonts.load('700 16px Silkscreen').catch(() => {});
+requestAnimationFrame(frame);
+window.__quiver = { game, net, step };
+})();
+</script>
+</body>
+</html>
