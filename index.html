@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Quiver Spire</title>
-<meta name="description" content="A TowerFall-style archery arena. Fight AI archers or invite friends with a link.">
+<meta name="description" content="A TowerFall-style archery arena. Head Hunters, Last Man Standing and team play against AI archers or friends.">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,7 +18,6 @@
   --parch: #eee5d3;
   --muted: #a69cba;
   --torch: #f4a53c;
-  --blood: #e3524a;
   --display: 'Silkscreen', ui-monospace, Menlo, monospace;
   --body: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
   color-scheme: dark;
@@ -44,9 +43,10 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(22px, 4vw, 
 .tag { color: var(--muted); font-size: 12px; }
 .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; min-height: 40px; }
 .slot { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--stone); border: 1px solid var(--stone-hi); min-width: 0; }
+.slot.team { border-color: var(--c); }
 .slot .chip { width: 10px; height: 14px; background: var(--c); flex: none; }
 .slot .nm { font-family: var(--display); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slot .pips { font-variant-numeric: tabular-nums; color: var(--torch); letter-spacing: 1px; font-size: 12px; }
+.slot .pips { font-variant-numeric: tabular-nums; color: var(--torch); font-size: 12px; white-space: nowrap; }
 .slot .q { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .slot.dead { opacity: .45; }
 .slot.dead .nm { text-decoration: line-through; }
@@ -65,16 +65,17 @@ button:focus-visible, .seg input:focus-visible + span, input[type=text]:focus-vi
 .linkrow { display: flex; gap: 6px; min-width: 0; }
 input[type=text] { flex: 1; min-width: 0; font-family: var(--body); font-size: 12px; background: var(--night); color: var(--parch); border: 1px solid var(--stone-hi); padding: 7px 8px; }
 .seats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; text-align: left; }
-.seats li { display: flex; align-items: center; gap: 8px; }
+.seats li { display: flex; align-items: center; gap: 8px; min-height: 26px; }
 .seats .chip { width: 8px; height: 12px; background: var(--c); flex: none; }
 .seats .who { color: var(--muted); margin-left: auto; font-size: 11px; }
+.seats .teamBtn { font-size: 11px; padding: 3px 8px; border-color: var(--t); color: var(--t); }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .card { background: var(--stone); border: 1px solid var(--stone-hi); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .card h3 { font-family: var(--display); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 400; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .row > label { color: var(--parch); }
 .row input[type=text] { flex: 0 1 160px; }
-.seg { display: inline-flex; border: 1px solid var(--stone-hi); }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--stone-hi); }
 .seg label { position: relative; cursor: pointer; }
 .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
 .seg span { display: block; padding: 5px 10px; color: var(--muted); }
@@ -82,6 +83,7 @@ input[type=text] { flex: 1; min-width: 0; font-family: var(--body); font-size: 1
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
 .keys dt { white-space: nowrap; }
 .keys dd { margin: 0; color: var(--muted); }
+.loot dt { font-family: var(--display); font-size: 12px; color: var(--c); }
 kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-hi); border-bottom-width: 2px; padding: 1px 5px; background: var(--night); color: var(--parch); }
 .note { color: var(--muted); line-height: 1.5; margin: 0; }
 .touch { display: none; justify-content: space-between; gap: 12px; user-select: none; -webkit-user-select: none; touch-action: none; }
@@ -107,8 +109,8 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
     <canvas id="game" width="320" height="240" aria-label="Game arena"></canvas>
     <div class="overlay" id="startOv">
       <div class="panel">
-        <h2>Most KOs wins</h2>
-        <p>Shoot or stomp rivals to score. KO'd archers respawn after two seconds. Dodge into an arrow to catch it. The edges wrap around.</p>
+        <h2 id="startTitle">Head Hunters</h2>
+        <p id="startText"></p>
         <div class="btns"><button class="big" id="startBtn" type="button">Play solo</button><button class="ghost" id="hostBtn" type="button">Host online</button></div>
       </div>
     </div>
@@ -162,8 +164,14 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
   <div class="cards">
     <section class="card" aria-labelledby="setupH">
       <h3 id="setupH">Match setup</h3>
+      <div class="row"><label>Game mode</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="match" id="match-hh" value="hh" checked><span>Head Hunters</span></label>
+          <label><input type="radio" name="match" id="match-lms" value="lms"><span>Last Man</span></label>
+          <label><input type="radio" name="match" id="match-thh" value="thh"><span>Teams</span></label>
+        </div></div>
       <div class="row"><label for="player-name">Your name</label><input type="text" id="player-name" maxlength="12" placeholder="Player"></div>
-      <div class="row"><label>Solo mode</label>
+      <div class="row"><label>Solo</label>
         <div class="seg" role="radiogroup">
           <label><input type="radio" name="mode" id="mode-play" value="play" checked><span>You play</span></label>
           <label><input type="radio" name="mode" id="mode-watch" value="watch"><span>Watch AI</span></label>
@@ -180,11 +188,16 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
           <label><input type="radio" name="diff" id="diff-normal" value="normal" checked><span>Normal</span></label>
           <label><input type="radio" name="diff" id="diff-hard" value="hard"><span>Hard</span></label>
         </div></div>
-      <div class="row"><label>KOs to win</label>
+      <div class="row"><label id="goalLabel">KOs to win</label>
         <div class="seg" role="radiogroup">
           <label><input type="radio" name="goal" id="goal-5" value="5"><span>5</span></label>
           <label><input type="radio" name="goal" id="goal-10" value="10" checked><span>10</span></label>
-          <label><input type="radio" name="goal" id="goal-20" value="20"><span>20</span></label>
+          <label><input type="radio" name="goal" id="goal-15" value="15"><span>15</span></label>
+        </div></div>
+      <div class="row"><label>Treasure chests</label>
+        <div class="seg" role="radiogroup">
+          <label><input type="radio" name="loot" id="loot-on" value="on" checked><span>On</span></label>
+          <label><input type="radio" name="loot" id="loot-off" value="off"><span>Off</span></label>
         </div></div>
       <div class="row"><label>Sound</label>
         <div class="seg" role="radiogroup">
@@ -197,12 +210,25 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
       <dl class="keys">
         <dt><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd></dt><dd>Run</dd>
         <dt><kbd>↑</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>S</kbd></dt><dd>Aim up or down. Down drops through ledges</dd>
-        <dt><kbd>Z</kbd> <kbd>J</kbd> <kbd>Space</kbd></dt><dd>Jump. Press against a wall in the air to wall-jump</dd>
+        <dt><kbd>Z</kbd> <kbd>J</kbd> <kbd>Space</kbd></dt><dd>Jump. Press again in mid-air to double-jump, or against a wall to wall-jump</dd>
         <dt><kbd>X</kbd> <kbd>K</kbd></dt><dd>Shoot in the held direction (8-way)</dd>
         <dt><kbd>C</kbd> <kbd>L</kbd> <kbd>Shift</kbd></dt><dd>Dodge. Catches arrows mid-dash</dd>
         <dt><kbd>Esc</kbd> <kbd>P</kbd></dt><dd>Pause (online, only the host can pause)</dd>
       </dl>
-      <p class="note">Land on a head to stomp. Walk over stuck or dropped arrows to collect them, up to six. Hitting yourself with your own arrow costs a KO. Archers flicker for a moment after respawning and can't be hit. Online, the host's browser runs the match, so the host should keep this page open.</p>
+      <p class="note">Your own arrows can't hurt you. Land on a head to stomp. Walk over arrows to collect them, up to six. A round ends after 90 seconds if no one wins it. Online, the host's browser runs the match, so the host should keep this page open.</p>
+    </section>
+    <section class="card" aria-labelledby="lootH">
+      <h3 id="lootH">Treasure</h3>
+      <p class="note">Chests drop into the arena during each round. Touch one to open it. Power-ups last until the round ends.</p>
+      <dl class="keys loot">
+        <dt style="--c:#ff6a3d">Bomb arrows</dt><dd>Two arrows that explode on impact</dd>
+        <dt style="--c:#7ef3ff">Laser arrows</dt><dd>Two fast arrows that fly straight and bounce off walls</dd>
+        <dt style="--c:#6fd36a">Bramble arrows</dt><dd>Two arrows that leave thorns rivals can't touch</dd>
+        <dt style="--c:#d9d9e8">Drill arrows</dt><dd>Two arrows that bore through one block</dd>
+        <dt style="--c:#bfe6ff">Shield</dt><dd>Blocks the next hit</dd>
+        <dt style="--c:#ffffff">Wings</dt><dd>Flap as often as you like in mid-air</dd>
+        <dt style="--c:#ffd447">Speed boots</dt><dd>Run faster</dd>
+      </dl>
     </section>
   </div>
 </div>
@@ -212,7 +238,7 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
 'use strict';
 const W = 320, H = 240, T = 16, COLS = 20, ROWS = 15;
 const GRAV = 0.28, MAX_FALL = 4.2, RUN = 1.6, JUMP_V = -5.7, ARROW_SPEED = 5.5, ARROW_G = 0.07, MAX_ARROWS = 6;
-const RESPAWN = 120, SHIELD = 90, MAX_STUCK = 30;
+const ROUND_LIMIT = 60 * 90, MAX_CHESTS = 2;
 const ROOM_PREFIX = 'quiver-spire-';
 
 const MAPS = [
@@ -272,6 +298,26 @@ const ROSTER = [
   { name: 'Tide', body: '#59a8ff', dark: '#28508f' },
   { name: 'Gilt', body: '#ffd447', dark: '#9a7718' },
 ];
+const TEAMS = [
+  { name: 'Red', color: '#ef5a4c', dark: '#9a2b22' },
+  { name: 'Blue', color: '#5a8ff0', dark: '#26489a' },
+];
+
+// arrow types: n normal, b bomb, l laser, r bramble, d drill. S W B are the non-arrow power-ups.
+const ITEMS = {
+  b: { name: 'Bomb arrows', color: '#ff6a3d', w: 22 },
+  l: { name: 'Laser arrows', color: '#7ef3ff', w: 14 },
+  r: { name: 'Bramble arrows', color: '#6fd36a', w: 14 },
+  d: { name: 'Drill arrows', color: '#d9d9e8', w: 14 },
+  S: { name: 'Shield', color: '#bfe6ff', w: 14 },
+  W: { name: 'Wings', color: '#ffffff', w: 11 },
+  B: { name: 'Speed boots', color: '#ffd447', w: 11 },
+};
+const MODES = {
+  hh: { name: 'Head Hunters', goalLabel: 'KOs to win', text: 'Every KO scores a point. Each round lasts until one archer is left. First to the target wins.' },
+  lms: { name: 'Last Man Standing', goalLabel: 'Rounds to win', text: 'Be the last archer alive to win the round. First to the target wins.' },
+  thh: { name: 'Team Head Hunters', goalLabel: 'Team KOs to win', text: 'Red against Blue. Every KO scores for your team and teammates can\'t hurt each other. Each round lasts until one team is left.' },
+};
 
 const AI_LEVELS = {
   easy:   { react: 26, acc: 0.45, dodge: 0.18, catchP: 0.05, gap: 55, lead: 0,   evade: 16 },
@@ -313,10 +359,14 @@ function boxesOverlap(a, b) {
 // ---------- state ----------
 const game = {
   mode: 'menu', attract: true, paused: false, frame: 0, mySlot: -1,
-  settings: { mode: 'watch', foes: 3, diff: 'normal', goal: 10 },
-  archers: [], arrows: [], parts: [], mapIdx: 0, round: 0, openRows: [],
-  banner: null, feed: null, champ: null, roundT: 0, endT: 0, freezeT: 0, shake: 0, arrowId: 0,
+  settings: { mode: 'watch', foes: 3, diff: 'normal', goal: 10, match: 'hh', treasure: true },
+  archers: [], arrows: [], parts: [], chests: [], hazards: [], popups: [], teamScore: [0, 0],
+  mapIdx: 0, round: 0, openRows: [], chestT: 0,
+  banner: null, feed: null, roundT: 0, endT: 0, freezeT: 0, shake: 0, arrowId: 0,
 };
+let teamPick = [0, 0, 1, 1];
+const teamMode = () => game.settings.match === 'thh';
+const friendly = (a, b) => a === b || (teamMode() && a.team === b.team);
 
 // Online: 'off', 'host' (runs the simulation) or 'guest' (sends input, draws host snapshots)
 const net = { role: 'off', peer: null, code: '', guests: new Map(), inputs: new Map(), events: [], host: null, matchOn: false,
@@ -344,11 +394,16 @@ function noise(dur, vol = 0.08) {
 }
 const sfx = {
   jump: () => tone(260, 520, 0.08, 'square', 0.03),
+  flap: () => tone(380, 760, 0.06, 'sine', 0.04),
   shoot: () => tone(1100, 300, 0.08, 'triangle', 0.06),
+  laser: () => tone(1800, 900, 0.1, 'sawtooth', 0.04),
   thunk: () => tone(180, 80, 0.05, 'square', 0.04),
   death: () => { noise(0.35, 0.09); tone(400, 60, 0.3, 'sawtooth', 0.04); },
+  boom: () => { noise(0.55, 0.15); tone(140, 40, 0.45, 'sawtooth', 0.07); },
   catch: () => tone(700, 1400, 0.1, 'sine', 0.06),
   pickup: () => tone(660, 990, 0.06, 'triangle', 0.05),
+  chest: () => { tone(523, 1046, 0.12, 'triangle', 0.05); setTimeout(() => tone(784, 1568, 0.18, 'triangle', 0.05), 90); },
+  pop: () => tone(1300, 260, 0.14, 'square', 0.05),
   dodge: () => tone(180, 640, 0.07, 'sawtooth', 0.025),
   stomp: () => tone(220, 110, 0.1, 'square', 0.06),
   round: () => { tone(523, 523, 0.1, 'square', 0.04); setTimeout(() => tone(784, 784, 0.18, 'square', 0.04), 110); },
@@ -430,11 +485,11 @@ function myName() { return cleanName(el.nameInput.value) || 'Player'; }
 function makeArcher(slot, seat, level) {
   const r = ROSTER[slot], kind = seat ? seat.kind : 'ai';
   return {
-    slot, name: kind === 'ai' ? r.name : seat.name, body: r.body, dark: r.dark,
+    slot, name: kind === 'ai' ? r.name : seat.name, body: r.body, dark: r.dark, team: 0,
     ai: kind === 'ai' ? { lv: AI_LEVELS[level] } : null, remote: kind === 'remote' ? seat.peer : null,
-    x: 0, y: 0, vx: 0, vy: 0, w: 8, h: 12, facing: 1, arrows: 3, alive: true, onGround: false, onPlat: false,
-    coyote: 0, jumpBuf: 0, wallDir: 0, dropT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeY: 0, shootCd: 0,
-    aimX: 1, aimY: 0, score: 0, runF: 0, prevY: 0, youT: 0, respawnT: 0, shieldT: 0,
+    x: 0, y: 0, vx: 0, vy: 0, w: 8, h: 12, facing: 1, quiver: [], alive: true, onGround: false, onPlat: false,
+    coyote: 0, jumpBuf: 0, wallDir: 0, dropT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeY: 0, shootCd: 0, airJumps: 1,
+    aimX: 1, aimY: 0, score: 0, runF: 0, prevY: 0, youT: 0, shieldT: 0, shield: false, wings: false, boots: false,
   };
 }
 
@@ -449,7 +504,13 @@ function startMatch(settings, attract, seats = []) {
   const total = Math.min(4, Math.max(seats.length, settings.foes + 1));
   game.archers = [];
   for (let i = 0; i < total; i++) game.archers.push(makeArcher(i, seats[i], settings.diff));
+  if (teamMode()) {
+    const picks = teamPick.slice(0, total);
+    if (picks.every(t => t === picks[0])) picks[total - 1] = 1 - picks[0];
+    game.archers.forEach((a, i) => { a.team = picks[i]; a.dark = TEAMS[a.team].dark; });
+  }
   game.mySlot = seats.findIndex(s => s.kind === 'local');
+  game.teamScore = [0, 0];
   game.round = 0; game.mapIdx = Math.floor(Math.random() * MAPS.length) - 1;
   game.paused = false;
   startRound();
@@ -462,34 +523,20 @@ function startRound() {
   grid = map.rows;
   game.openRows = [];
   for (let r = 0; r < ROWS; r++) if (grid[r][0] !== '#' && grid[r][COLS - 1] !== '#') game.openRows.push(r);
-  game.arrows = []; game.parts = [];
+  game.arrows = []; game.parts = []; game.chests = []; game.hazards = []; game.popups = [];
+  game.chestT = 90;
   const spawns = map.spawns.slice().sort(() => Math.random() - 0.5);
   game.archers.forEach((a, i) => {
     const [c, r] = spawns[i % spawns.length];
-    Object.assign(a, { x: c * T + 4, y: (r + 1) * T - a.h, vx: 0, vy: 0, arrows: 3, alive: true, dodgeT: 0, dodgeCd: 0,
-      shootCd: 0, jumpBuf: 0, coyote: 0, dropT: 0, respawnT: 0, shieldT: 0, facing: c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 120 });
+    Object.assign(a, { x: c * T + 4, y: (r + 1) * T - a.h, vx: 0, vy: 0, quiver: ['n', 'n', 'n'], alive: true, dodgeT: 0, dodgeCd: 0,
+      shootCd: 0, jumpBuf: 0, coyote: 0, dropT: 0, airJumps: 1, shieldT: 0, shield: false, wings: false, boots: false,
+      facing: c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 120 });
     if (a.ai) resetAI(a);
   });
-  game.mode = 'play'; game.freezeT = 70; game.roundT = 0; game.endT = 0; game.feed = null; game.champ = null;
-  game.banner = { top: 'First to ' + game.settings.goal + ' KOs', sub: map.name };
+  game.mode = 'play'; game.freezeT = 70; game.roundT = 0; game.endT = 0; game.feed = null;
+  game.banner = { top: 'Round ' + game.round, sub: map.name };
   buildMapCanvas();
   sfx.round();
-}
-
-// a KO'd archer comes back at the spawn point farthest from everyone else, briefly shielded
-function respawn(a) {
-  const others = game.archers.filter(e => e.alive && e !== a);
-  let best = null, bd = -1;
-  for (const [c, r] of MAPS[game.mapIdx].spawns) {
-    const x = c * T + 4, y = (r + 1) * T - a.h;
-    const d = others.length ? Math.min(...others.map(e => Math.hypot(wd(e.x - x, W), wd(e.y - y, H)))) : rand(100);
-    if (d > bd) { bd = d; best = { x, y, c }; }
-  }
-  Object.assign(a, { x: best.x, y: best.y, vx: 0, vy: 0, arrows: 3, alive: true, dodgeT: 0, dodgeCd: 0, shootCd: 0, jumpBuf: 0,
-    coyote: 0, dropT: 0, shieldT: SHIELD, facing: best.c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 60 });
-  if (a.ai) resetAI(a);
-  respawnParts(a.x + 4, a.y + 6);
-  if (net.role === 'host') net.events.push(['r', r1(a.x + 4), r1(a.y + 6)]);
 }
 
 // ---------- archers ----------
@@ -510,13 +557,20 @@ function updateArcher(a, inp) {
     if (Math.random() < 0.6) spawnPart(a.x + rand(a.w), a.y + rand(a.h), 0, 0, 10, a.body, 0);
   } else {
     if (hor) a.facing = hor;
-    const target = hor * RUN, acc = a.onGround ? 0.4 : 0.22;
+    const target = hor * RUN * (a.boots ? 1.4 : 1), acc = a.onGround ? 0.4 : 0.22;
     if (a.vx < target) a.vx = Math.min(target, a.vx + acc); else if (a.vx > target) a.vx = Math.max(target, a.vx - acc);
 
     if (inp.jumpPressed) a.jumpBuf = 6;
     if (a.jumpBuf > 0) {
       if (a.coyote > 0) { a.vy = JUMP_V; a.jumpBuf = 0; a.coyote = 0; a.onGround = false; sfx.jump(); }
       else if (a.wallDir !== 0) { a.vy = JUMP_V * 0.92; a.vx = -a.wallDir * 2.6; a.facing = -a.wallDir; a.jumpBuf = 0; sfx.jump(); }
+      else if (inp.jumpPressed && (a.wings || a.airJumps > 0)) {
+        // a fresh press in mid-air: flap with wings, otherwise spend the double jump
+        if (a.wings) { a.vy = Math.min(a.vy, -3.9); sfx.flap(); }
+        else { a.airJumps--; a.vy = JUMP_V * 0.85; sfx.jump(); }
+        a.jumpBuf = 0;
+        for (let i = 0; i < 5; i++) spawnPart(a.x + rand(a.w), a.y + a.h, rand(-0.8, 0.8), rand(0.2, 0.8), 14, a.wings ? '#ffffff' : '#c9c0dd', 0);
+      }
       else a.jumpBuf--;
     }
     if (!inp.jump && a.vy < -2) a.vy += 0.45;
@@ -531,7 +585,7 @@ function updateArcher(a, inp) {
     if (!ax && !ay) ax = a.facing;
     a.aimX = ax; a.aimY = ay;
 
-    if (inp.shoot && a.arrows > 0 && a.shootCd === 0) {
+    if (inp.shoot && a.quiver.length > 0 && a.shootCd === 0) {
       if (ax) a.facing = Math.sign(ax);
       fireArrow(a, ax, ay);
     }
@@ -566,6 +620,7 @@ function updateArcher(a, inp) {
       for (let c = c0; c <= c1; c++) if (tileAt(c, r) === '-') { a.y = top - a.h; a.vy = 0; a.onGround = true; a.onPlat = true; break; }
     }
   }
+  if (a.onGround) a.airJumps = 1;
   if (a.onGround && !wasGround && a.prevY < a.y - 0.5) for (let i = 0; i < 3; i++) spawnPart(a.x + rand(a.w), a.y + a.h, rand(-0.6, 0.6), -rand(0.4), 12, '#8c80a3', 0.05);
   a.x = mod(a.x, W); a.y = mod(a.y, H);
   a.coyote = a.onGround ? 6 : Math.max(0, a.coyote - 1);
@@ -578,17 +633,20 @@ function updateArcher(a, inp) {
 
   // pick up arrows
   for (const ar of game.arrows) {
-    if (ar.state !== 'stuck' || a.arrows >= MAX_ARROWS) continue;
-    if (inBox(ar.px, ar.py, a.x - 3, a.y - 3, a.w + 6, a.h + 6)) { ar.dead = true; a.arrows++; sfx.pickup(); }
+    if (ar.state !== 'stuck' || a.quiver.length >= MAX_ARROWS) continue;
+    if (inBox(ar.px, ar.py, a.x - 3, a.y - 3, a.w + 6, a.h + 6)) { ar.dead = true; a.quiver.push(ar.type); sfx.pickup(); }
   }
 }
 
 function fireArrow(a, ax, ay) {
-  const l = Math.hypot(ax, ay), nx = ax / l, ny = ay / l;
+  const type = a.quiver.pop();
+  const l = Math.hypot(ax, ay), nx = ax / l, ny = ay / l, sp = type === 'l' ? 8 : ARROW_SPEED;
   const cx = a.x + a.w / 2, cy = a.y + 5;
-  game.arrows.push({ id: ++game.arrowId, x: mod(cx + nx * 6, W), y: mod(cy + ny * 6, H), vx: nx * ARROW_SPEED, vy: ny * ARROW_SPEED,
-    owner: a, grace: 10, state: 'fly', ang: Math.atan2(ny, nx), px: 0, py: 0, slot: a.slot, dead: false });
-  a.arrows--; a.shootCd = 12; sfx.shoot();
+  game.arrows.push({ id: ++game.arrowId, x: mod(cx + nx * 6, W), y: mod(cy + ny * 6, H), vx: nx * sp, vy: ny * sp,
+    owner: a, state: 'fly', ang: Math.atan2(ny, nx), px: 0, py: 0, slot: a.slot, type,
+    bounces: type === 'l' ? 3 : 0, drill: type === 'd' ? 18 : 0, inWall: false, age: 0, dead: false });
+  a.shootCd = 12;
+  if (type === 'l') sfx.laser(); else sfx.shoot();
 }
 
 function deathParts(cx, cy, slot) {
@@ -597,31 +655,46 @@ function deathParts(cx, cy, slot) {
   for (let i = 0; i < 8; i++) spawnPart(cx, cy, rand(-1, 1), rand(-1.6, -0.2), 50 + rand(30), '#eee5d3', 0.03);
 }
 function catchParts(x, y) { for (let i = 0; i < 6; i++) spawnPart(x, y, rand(-1, 1), rand(-1, 1), 14, '#ffffff', 0); }
-function respawnParts(x, y) { for (let i = 0; i < 12; i++) spawnPart(x, y, rand(-1.5, 1.5), rand(-1.5, 1.5), 20, '#eee5d3', 0); }
+function boomParts(x, y) {
+  for (let i = 0; i < 40; i++) { const a = rand(Math.PI * 2), s = rand(0.5, 3); spawnPart(x, y, Math.cos(a) * s, Math.sin(a) * s, 16 + rand(20), pick(['#ff6a3d', '#ffd447', '#fff4d8', '#9a3b22']), 0.02); }
+}
+function shieldParts(x, y) { for (let i = 0; i < 14; i++) { const a = rand(Math.PI * 2); spawnPart(x + Math.cos(a) * 8, y + Math.sin(a) * 8, Math.cos(a), Math.sin(a), 18, '#bfe6ff', 0); } }
+function chestParts(x, y) { for (let i = 0; i < 14; i++) spawnPart(x, y, rand(-1.4, 1.4), rand(-2.4, -0.4), 24, pick(['#f4c542', '#fff4d8']), 0.08); }
 
 function kill(victim, how, killer) {
   if (!victim.alive) return;
-  victim.alive = false; victim.respawnT = RESPAWN;
-  if (killer && !game.endT) {
-    if (killer === victim) victim.score = Math.max(0, victim.score - 1);
-    else killer.score++;
+  victim.alive = false;
+  if (killer && !friendly(killer, victim)) {
     game.feed = { k: killer.slot, v: victim.slot, t: 100 };
-    if (killer !== victim && killer.score >= game.settings.goal) {
-      game.endT = 150; game.champ = killer;
-      game.banner = { win: killer.slot, sub: 'First to ' + game.settings.goal + ' KOs' };
-    }
+    if (game.settings.match !== 'lms') { killer.score++; if (teamMode()) game.teamScore[killer.team]++; }
   }
   const cx = victim.x + victim.w / 2, cy = victim.y + victim.h / 2;
   deathParts(cx, cy, victim.slot);
   if (net.role === 'host') net.events.push(['k', r1(cx), r1(cy), victim.slot]);
-  for (let i = 0; i < victim.arrows; i++) dropArrow(cx, cy, rand(-1.4, 1.4), rand(-2.5, -1), victim.slot);
-  victim.arrows = 0;
+  for (const type of victim.quiver) dropArrow(cx, cy, rand(-1.4, 1.4), rand(-2.5, -1), victim.slot, type);
+  victim.quiver = [];
   game.shake = how === 'stomp' ? 5 : 7;
   sfx.death();
 }
 
-function dropArrow(x, y, vx, vy, slot) {
-  game.arrows.push({ id: ++game.arrowId, x, y, vx, vy, owner: null, grace: 0, state: 'drop', ang: Math.atan2(vy, vx), px: x, py: y, slot, dead: false });
+// every source of harm goes through here so a shield can soak one hit
+function hurt(victim, how, killer) {
+  if (!victim.alive || victim.shieldT > 0) return false;
+  if (victim.shield) {
+    victim.shield = false; victim.shieldT = 40;
+    const cx = victim.x + victim.w / 2, cy = victim.y + victim.h / 2;
+    shieldParts(cx, cy);
+    if (net.role === 'host') net.events.push(['h', r1(cx), r1(cy)]);
+    sfx.pop();
+    return false;
+  }
+  kill(victim, how, killer);
+  return true;
+}
+
+function dropArrow(x, y, vx, vy, slot, type = 'n') {
+  game.arrows.push({ id: ++game.arrowId, x, y, vx, vy, owner: null, state: 'drop', ang: Math.atan2(vy, vx), px: x, py: y, slot, type,
+    bounces: 0, drill: 0, inWall: false, age: 0, dead: false });
 }
 
 // ---------- arrows ----------
@@ -631,30 +704,67 @@ function stick(ar) {
   ar.px = mod(ar.x - ar.vx / l * 5, W); ar.py = mod(ar.y - ar.vy / l * 5, H);
   ar.vx = ar.vy = 0;
 }
+
+function explode(ar) {
+  ar.dead = true;
+  boomParts(ar.x, ar.y);
+  if (net.role === 'host') net.events.push(['b', r1(ar.x), r1(ar.y)]);
+  game.shake = 9; sfx.boom();
+  for (const a of game.archers) {
+    if (!a.alive || (ar.owner && friendly(ar.owner, a))) continue;
+    if (Math.hypot(wd(a.x + a.w / 2 - ar.x, W), wd(a.y + a.h / 2 - ar.y, H)) < 22) hurt(a, 'bomb', ar.owner);
+  }
+}
+
+function bramble(ar) {
+  ar.dead = true;
+  game.hazards.push({ x: ar.px - 9, y: ar.py - 7, w: 18, h: 14, t: 420, owner: ar.owner, slot: ar.slot, seed: ar.id });
+}
+
 function updateArrows() {
   for (const ar of game.arrows) {
     if (ar.dead) continue;
     if (ar.state === 'fly') {
-      if (ar.grace > 0) ar.grace--;
-      for (let s = 0; s < 3 && ar.state === 'fly'; s++) {
-        ar.x = mod(ar.x + ar.vx / 3, W); ar.y = mod(ar.y + ar.vy / 3, H);
-        if (solidPx(ar.x, ar.y)) { ar.ang = Math.atan2(ar.vy, ar.vx); stick(ar); sfx.thunk(); break; }
+      ar.age++;
+      const laser = ar.type === 'l' && ar.age < 150, sub = laser ? 6 : 3;
+      for (let s = 0; s < sub && ar.state === 'fly' && !ar.dead; s++) {
+        const ox = ar.x, oy = ar.y;
+        ar.x = mod(ar.x + ar.vx / sub, W); ar.y = mod(ar.y + ar.vy / sub, H);
+        if (solidPx(ar.x, ar.y)) {
+          if (ar.type === 'd' && ar.drill > 0) { ar.drill -= Math.hypot(ar.vx, ar.vy) / sub; ar.inWall = true; continue; }
+          if (laser && ar.bounces > 0) {
+            const hitX = solidPx(ar.x, oy), hitY = solidPx(ox, ar.y);
+            if (hitX || !hitY) ar.vx = -ar.vx;
+            if (hitY || !hitX) ar.vy = -ar.vy;
+            ar.x = ox; ar.y = oy; ar.bounces--;
+            continue;
+          }
+          ar.ang = Math.atan2(ar.vy, ar.vx);
+          if (ar.type === 'b') { explode(ar); break; }
+          stick(ar); sfx.thunk();
+          if (ar.type === 'r') bramble(ar);
+          break;
+        }
+        if (ar.inWall) { ar.inWall = false; ar.drill = 0; }
         for (const a of game.archers) {
-          if (!a.alive || a.shieldT > 0 || (a === ar.owner && ar.grace > 0)) continue;
+          if (!a.alive || a.shieldT > 0 || (ar.owner && friendly(ar.owner, a))) continue;
           if (!inBox(ar.x, ar.y, a.x - 1, a.y - 1, a.w + 2, a.h + 2)) continue;
-          if (a.dodgeT > 0 && a.arrows < MAX_ARROWS) {
-            a.arrows++; ar.dead = true; sfx.catch();
+          if (a.dodgeT > 0 && a.quiver.length < MAX_ARROWS) {
+            a.quiver.push(ar.type); ar.dead = true; sfx.catch();
             catchParts(ar.x, ar.y);
             if (net.role === 'host') net.events.push(['c', r1(ar.x), r1(ar.y)]);
-          } else {
-            kill(a, 'arrow', ar.owner);
+          } else if (ar.type === 'b') explode(ar);
+          else {
+            hurt(a, 'arrow', ar.owner);
             ar.state = 'drop'; ar.vx = -ar.vx * 0.15; ar.vy = -1.8; ar.owner = null;
           }
           break;
         }
-        if (ar.dead) break;
       }
-      if (ar.state === 'fly') { ar.vy = Math.min(ar.vy + ARROW_G, 6); ar.ang = Math.atan2(ar.vy, ar.vx); }
+      if (ar.state === 'fly' && !ar.dead) {
+        if (!laser) ar.vy = Math.min(ar.vy + ARROW_G, 6);
+        ar.ang = Math.atan2(ar.vy, ar.vx);
+      }
     } else if (ar.state === 'drop') {
       ar.vy = Math.min(ar.vy + 0.18, 4);
       const nx = mod(ar.x + ar.vx, W), ny = mod(ar.y + ar.vy, H);
@@ -668,9 +778,59 @@ function updateArrows() {
     }
   }
   game.arrows = game.arrows.filter(a => !a.dead);
-  // respawns keep adding arrows, so clear the oldest stuck ones once the arena gets crowded
-  const stuck = game.arrows.filter(a => a.state === 'stuck');
-  if (stuck.length > MAX_STUCK) { const old = new Set(stuck.slice(0, stuck.length - MAX_STUCK)); game.arrows = game.arrows.filter(a => !old.has(a)); }
+}
+
+function updateHazards() {
+  for (const h of game.hazards) {
+    h.t--;
+    for (const a of game.archers) if (a.alive && !(h.owner && friendly(h.owner, a)) && boxesOverlap(a, h)) hurt(a, 'bramble', h.owner);
+  }
+  game.hazards = game.hazards.filter(h => h.t > 0);
+}
+
+// ---------- treasure ----------
+function rollItem() {
+  const keys = Object.keys(ITEMS), total = keys.reduce((s, k) => s + ITEMS[k].w, 0);
+  let n = rand(total);
+  for (const k of keys) { n -= ITEMS[k].w; if (n <= 0) return k; }
+  return 'b';
+}
+function spawnChest() {
+  const spots = [];
+  for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
+    if (tileAt(c, r) !== '.' || tileAt(c, r - 1) !== '.' || !/[#-]/.test(tileAt(c, r + 1))) continue;
+    const x = c * T + 3, y = (r + 1) * T - 9;
+    if (game.archers.some(a => a.alive && Math.hypot(wd(a.x - x, W), wd(a.y - y, H)) < 48)) continue;
+    if (game.chests.some(ch => Math.abs(ch.x - x) < 24 && Math.abs(ch.y - y) < 24)) continue;
+    spots.push({ x, y });
+  }
+  if (!spots.length) return;
+  const s = pick(spots);
+  game.chests.push({ x: s.x, y: s.y, w: 10, h: 9, item: rollItem(), open: false });
+}
+function applyItem(a, item) {
+  if ('blrd'.includes(item)) {
+    for (let i = 0; i < 2; i++) {
+      if (a.quiver.length < MAX_ARROWS) a.quiver.push(item);
+      else { const j = a.quiver.indexOf('n'); if (j >= 0) { a.quiver.splice(j, 1); a.quiver.push(item); } }
+    }
+  } else if (item === 'S') a.shield = true;
+  else if (item === 'W') a.wings = true;
+  else if (item === 'B') a.boots = true;
+}
+function updateChests() {
+  if (!game.settings.treasure) return;
+  if (--game.chestT <= 0) { game.chestT = 600 + rand(400); if (game.chests.length < MAX_CHESTS) spawnChest(); }
+  for (const ch of game.chests) for (const a of game.archers) {
+    if (ch.open || !a.alive || !boxesOverlap(a, ch)) continue;
+    ch.open = true;
+    applyItem(a, ch.item);
+    game.popups.push({ slot: a.slot, item: ch.item, t: 80 });
+    chestParts(ch.x + 5, ch.y + 4);
+    if (net.role === 'host') net.events.push(['p', a.slot, ch.item, r1(ch.x + 5), r1(ch.y + 4)]);
+    sfx.chest();
+  }
+  game.chests = game.chests.filter(c => !c.open);
 }
 
 // ---------- AI ----------
@@ -683,9 +843,9 @@ function simShot(me, dx, dy, lead) {
       x = mod(x + vx / 3, W); y = mod(y + vy / 3, H);
       if (solidPx(x, y)) return null;
       for (const e of game.archers) {
-        if (!e.alive || e.shieldT > 0) continue;
+        if (!e.alive || e.shieldT > 0 || friendly(me, e)) continue;
         const px = e.x + e.vx * t * lead, py = e.y + (e.onGround ? 0 : e.vy * t * lead * 0.5);
-        if (inBox(x, y, px - 1, py - 1, e.w + 2, e.h + 2)) return e === me ? null : e;
+        if (inBox(x, y, px - 1, py - 1, e.w + 2, e.h + 2)) return e;
       }
     }
     vy = Math.min(vy + ARROW_G, 6);
@@ -695,7 +855,7 @@ function simShot(me, dx, dy, lead) {
 
 function findThreat(me) {
   for (const ar of game.arrows) {
-    if (ar.state !== 'fly' || (ar.owner === me && ar.grace > 0)) continue;
+    if (ar.state !== 'fly' || (ar.owner && friendly(ar.owner, me))) continue;
     let x = ar.x, y = ar.y, vx = ar.vx, vy = ar.vy;
     for (let t = 0; t < 16; t++) {
       let blocked = false;
@@ -705,7 +865,7 @@ function findThreat(me) {
         if (inBox(x, y, me.x - 3, me.y - 3, me.w + 6, me.h + 6)) return { ar, t };
       }
       if (blocked) break;
-      vy = Math.min(vy + ARROW_G, 6);
+      if (ar.type !== 'l') vy = Math.min(vy + ARROW_G, 6);
     }
   }
   return null;
@@ -735,19 +895,21 @@ function ledgeAbove(c, fr) {
 
 function aiInput(a) {
   const ai = a.ai, lv = ai.lv, inp = blankInput();
-  const enemies = game.archers.filter(e => e.alive && e !== a);
+  const enemies = game.archers.filter(e => e.alive && !friendly(a, e));
   if (!enemies.length) return inp;
-  const cx = a.x + a.w / 2, cy = a.y + a.h / 2;
+  const cx = a.x + a.w / 2, cy = a.y + a.h / 2, q = a.quiver.length;
 
   // pick a goal
   if (--ai.goalT <= 0) {
     ai.goalT = 15 + rand(15);
     const tgt = nearest(a, enemies, e => [e.x, e.y]);
-    if (a.arrows === 0) {
+    const chest = game.chests.length ? nearest(a, game.chests, c => [c.x, c.y]) : null;
+    if (chest && chest.d < 140 && Math.random() < 0.6) { ai.gx = chest.o.x + 5; ai.gy = chest.o.y + 4; }
+    else if (q === 0) {
       const loose = nearest(a, game.arrows.filter(r => r.state !== 'fly'), r => [r.px || r.x, r.py || r.y]);
       if (loose) { ai.gx = loose.o.px || loose.o.x; ai.gy = loose.o.py || loose.o.y; }
       else { ai.gx = tgt.o.x + 4; ai.gy = tgt.o.y - 24; }
-    } else if (a.arrows < 3 && Math.random() < 0.5) {
+    } else if (q < 3 && Math.random() < 0.5) {
       const loose = nearest(a, game.arrows.filter(r => r.state === 'stuck'), r => [r.px, r.py]);
       if (loose && loose.d < 90) { ai.gx = loose.o.px; ai.gy = loose.o.py; }
       else { ai.gx = tgt.o.x + 4; ai.gy = tgt.o.y + 6; }
@@ -769,10 +931,15 @@ function aiInput(a) {
   if (Math.abs(dy) > H / 2) dy = wd(dy, H);
   let dir = ai.wanderT > 0 ? ai.wander : (Math.abs(dx) > 3 ? Math.sign(dx) : 0);
   if (ai.wanderT > 0) ai.wanderT--;
-  // step away from someone dropping onto us
+  // step away from someone dropping onto us, and from thorns
   for (const e of enemies) {
     const ex = wd(e.x - a.x, W), ey = wd(e.y - a.y, H);
     if (Math.abs(ex) < 12 && ey < -4 && ey > -40 && e.vy > 0 && Math.random() < lv.dodge) dir = ex > 0 ? -1 : 1;
+  }
+  for (const h of game.hazards) {
+    if (h.owner && friendly(h.owner, a)) continue;
+    const hx = wd(h.x + h.w / 2 - cx, W), hy = wd(h.y + h.h / 2 - cy, H);
+    if (Math.abs(hy) < 16 && Math.abs(hx) < 26 && Math.sign(hx) === dir) dir = -dir;
   }
   if (dir < 0) inp.left = true; else if (dir > 0) inp.right = true;
   const jump = () => { inp.jumpPressed = true; ai.jumpHold = 18; };
@@ -785,6 +952,7 @@ function aiInput(a) {
     else if (dir && !groundAhead && dy < 8) jump();
     else if (Math.random() < 0.004) jump();
   } else if (a.wallDir && a.vy > -0.5 && (dy < -16 || ai.wanderT > 0) && Math.random() < 0.2) jump();
+  else if (a.vy > 0.5 && dy < -20 && (a.airJumps > 0 || a.wings) && Math.random() < 0.12) jump();
   if (ai.jumpHold > 0) { inp.jump = true; ai.jumpHold--; }
 
   // stuck detection
@@ -802,12 +970,12 @@ function aiInput(a) {
     if (Math.random() < lv.dodge) {
       ai.evadeT = Math.max(0, Math.round(lv.evade + rand(-1, 3)));
       ai.evadeArrow = th.ar;
-      ai.evadeMode = a.dodgeCd === 0 ? (Math.random() < lv.catchP && a.arrows < MAX_ARROWS ? 'catch' : 'dodge') : 'jump';
+      ai.evadeMode = a.dodgeCd === 0 ? (Math.random() < lv.catchP && q < MAX_ARROWS ? 'catch' : 'dodge') : 'jump';
     }
   }
   if (ai.evadeT >= 0 && ai.evadeT-- === 0 && ai.evadeArrow && ai.evadeArrow.state === 'fly' && !ai.evadeArrow.dead) {
     const ar = ai.evadeArrow;
-    if (ai.evadeMode === 'jump' || a.dodgeCd > 0) { if (a.onGround) jump(); else if (a.wallDir) jump(); }
+    if (ai.evadeMode === 'jump' || a.dodgeCd > 0) jump();
     else {
       inp.dodge = true;
       if (ai.evadeMode === 'catch') inp.dodgeDir = [Math.sign(-ar.vx) || a.facing, 0];
@@ -824,7 +992,7 @@ function aiInput(a) {
 
   // shoot
   if (ai.shotT > 0) ai.shotT--;
-  if (a.arrows > 0 && ai.shotT <= 0 && a.shootCd === 0 && a.dodgeT === 0) {
+  if (q > 0 && ai.shotT <= 0 && a.shootCd === 0 && a.dodgeT === 0) {
     let sol = null;
     if (game.frame % 2 === 0) for (const d of DIRS) { const e = simShot(a, d[0], d[1], lv.lead); if (e) { sol = d; break; } }
     if (sol) ai.seeT++; else ai.seeT = Math.max(0, ai.seeT - 1);
@@ -851,44 +1019,91 @@ function simulate() {
   if (game.paused || game.mode !== 'play') { updateParts(); return; }
   if (game.freezeT > 0) { game.freezeT--; if (game.freezeT === 0) game.banner = null; }
   if (game.feed && --game.feed.t <= 0) game.feed = null;
-  // the arena freezes at the start, and on the winning KO
-  const frozen = game.freezeT > 0 || game.endT > 0;
+  for (const p of game.popups) p.t--;
+  game.popups = game.popups.filter(p => p.t > 0);
+  const frozen = game.freezeT > 0;
 
   for (const a of game.archers) {
-    if (!a.alive) { if (!frozen && --a.respawnT <= 0) respawn(a); continue; }
-    if (a.shieldT > 0 && !frozen) a.shieldT--;
+    if (!a.alive) continue;
+    if (a.shieldT > 0) a.shieldT--;
     let inp = a.ai ? aiInput(a) : a.remote ? remoteInput(a) : humanInput();
     if (frozen) inp = blankInput();
-    if (game.endT > 0) continue;
     updateArcher(a, inp);
   }
 
   if (!frozen) {
     // stomps
     for (const a of game.archers) for (const b of game.archers) {
-      if (a === b || !a.alive || !b.alive || a.vy <= 0 || b.dodgeT > 0 || b.shieldT > 0) continue;
+      if (a === b || !a.alive || !b.alive || a.vy <= 0 || b.dodgeT > 0 || b.shieldT > 0 || friendly(a, b)) continue;
       if (!boxesOverlap(a, b)) continue;
-      if (wd(a.prevY + a.h - b.y, H) <= 4) { kill(b, 'stomp', a); a.vy = -3.8; sfx.stomp(); }
+      if (wd(a.prevY + a.h - b.y, H) <= 4) { hurt(b, 'stomp', a); a.vy = -3.8; sfx.stomp(); }
     }
     updateArrows();
+    updateHazards();
+    updateChests();
   }
   updateParts();
   if (game.shake > 0) game.shake *= 0.85;
   game.roundT++;
-  if (game.endT > 0 && --game.endT === 0) endMatch(game.champ);
+
+  // a round lasts until one archer (or one team) is left
+  if (game.endT === 0 && !frozen) {
+    const alive = game.archers.filter(a => a.alive);
+    const sides = new Set(alive.map(a => teamMode() ? 't' + a.team : a.slot));
+    const timeUp = game.roundT > ROUND_LIMIT;
+    if (sides.size <= 1 || timeUp) {
+      game.endT = 110;
+      const m = game.settings.match;
+      if (m === 'lms') {
+        const w = !timeUp && alive.length === 1 ? alive[0] : null;
+        if (w) { w.score++; game.banner = { win: w.slot, sub: 'Round ' + game.round }; }
+        else game.banner = { top: 'Draw', sub: timeUp ? "Time's up" : 'No one survived' };
+      } else if (m === 'thh') {
+        const t = !timeUp && alive.length ? alive[0].team : -1;
+        game.banner = { team: t, top: timeUp ? "Time's up" : 'No one survived', sub: TEAMS[0].name + ' ' + game.teamScore[0] + ' · ' + TEAMS[1].name + ' ' + game.teamScore[1] };
+      } else {
+        const lead = game.archers.slice().sort((a, b) => b.score - a.score)[0];
+        game.banner = { top: timeUp ? "Time's up" : 'Round ' + game.round + ' over', sub: 'Leader: ' + lead.name + ' · ' + lead.score + ' KO' };
+      }
+    }
+  }
+  if (game.endT > 0 && --game.endT === 0) {
+    const champ = findChamp();
+    if (champ) endMatch(champ); else startRound();
+  }
+}
+
+// a match ends after a round once someone (or a team) reaches the goal outright
+function findChamp() {
+  const goal = game.settings.goal;
+  if (teamMode()) {
+    const [r, b] = game.teamScore;
+    return Math.max(r, b) >= goal && r !== b ? { team: r > b ? 0 : 1 } : null;
+  }
+  const s = game.archers.slice().sort((a, b) => b.score - a.score);
+  return s[0] && s[0].score >= goal && (s.length < 2 || s[0].score > s[1].score) ? s[0] : null;
 }
 
 const displayName = a => a.slot === game.mySlot ? 'You' : a.name;
+const myTeam = () => { const me = game.archers.find(a => a.slot === game.mySlot); return me ? me.team : -1; };
 
 function endMatch(champ) {
   game.mode = 'over'; game.banner = null;
-  if (game.attract) { setTimeout(() => { if (game.attract) startMatch(game.settings, true); }, 1500); return; }
+  if (game.attract) { setTimeout(() => { if (game.attract) demo(); }, 1500); return; }
   showEnd(champ, net.role !== 'guest');
 }
 function showEnd(champ, canRestart) {
-  el.endTitle.textContent = champ.slot === game.mySlot ? 'You win the match' : champ.name + ' wins the match';
-  el.endTitle.style.color = champ.body;
-  const line = 'KOs: ' + game.archers.slice().sort((a, b) => b.score - a.score).map(a => displayName(a) + ' ' + a.score).join(' · ');
+  let line;
+  if (champ.slot === undefined) {
+    const t = TEAMS[champ.team];
+    el.endTitle.textContent = teamMode() && myTeam() === champ.team ? 'Your team wins' : t.name + ' team wins';
+    el.endTitle.style.color = t.color;
+    line = TEAMS[0].name + ' ' + game.teamScore[0] + ' · ' + TEAMS[1].name + ' ' + game.teamScore[1];
+  } else {
+    el.endTitle.textContent = champ.slot === game.mySlot ? 'You win the match' : champ.name + ' wins the match';
+    el.endTitle.style.color = champ.body;
+    line = (game.settings.match === 'lms' ? 'Rounds won: ' : 'KOs: ') + game.archers.slice().sort((a, b) => b.score - a.score).map(a => displayName(a) + ' ' + a.score).join(' · ');
+  }
   el.endText.textContent = canRestart ? line : line + '. Waiting for the host to start a rematch.';
   el.endBtns.hidden = !canRestart;
   el.endOv.hidden = false;
@@ -896,7 +1111,7 @@ function showEnd(champ, canRestart) {
 }
 
 // ---------- particles ----------
-function spawnPart(x, y, vx, vy, life, color, g) { if (game.parts.length < 500) game.parts.push({ x, y, vx, vy, life, color, g }); }
+function spawnPart(x, y, vx, vy, life, color, g) { if (game.parts.length < 600) game.parts.push({ x, y, vx, vy, life, color, g }); }
 function updateParts() {
   for (const p of game.parts) { p.vy += p.g; p.x = mod(p.x + p.vx, W); p.y = mod(p.y + p.vy, H); p.life--; if (p.g && solidPx(p.x, p.y)) { p.vx *= 0.3; p.vy = 0; p.g = 0; } }
   game.parts = game.parts.filter(p => p.life > 0);
@@ -991,10 +1206,13 @@ function broadcast() {
   if (!net.guests.size) return;
   const snap = {
     t: 's', m: game.mode, p: game.paused ? 1 : 0, mi: game.mapIdx, rd: game.round, fz: game.freezeT, b: game.banner,
-    sh: r1(game.shake), g: game.settings.goal, f: game.feed ? [game.feed.k, game.feed.v, game.feed.t] : 0,
-    a: game.archers.map(a => [a.slot, r1(a.x), r1(a.y), r2(a.vx), r2(a.vy), a.facing, a.aimX, a.aimY, a.arrows, a.alive ? 1 : 0,
-      a.dodgeT, a.onGround ? 1 : 0, a.runF, a.score, a.youT, a.name, a.shieldT]),
-    r: game.arrows.map(r => [r1(r.x), r1(r.y), r2(r.ang), r.state === 'fly' ? 0 : r.state === 'drop' ? 1 : 2, r.slot]),
+    sh: r1(game.shake), g: game.settings.goal, md: game.settings.match, ts: game.teamScore,
+    f: game.feed ? [game.feed.k, game.feed.v, game.feed.t] : 0,
+    a: game.archers.map(a => [a.slot, r1(a.x), r1(a.y), r2(a.vx), r2(a.vy), a.facing, a.aimX, a.aimY, a.quiver.join(''), a.alive ? 1 : 0,
+      a.dodgeT, a.onGround ? 1 : 0, a.runF, a.score, a.youT, a.name, a.shieldT, a.team, (a.shield ? 1 : 0) | (a.wings ? 2 : 0) | (a.boots ? 4 : 0)]),
+    r: game.arrows.map(r => [r1(r.x), r1(r.y), r2(r.ang), r.state === 'fly' ? 0 : r.state === 'drop' ? 1 : 2, r.slot, r.type]),
+    c: game.chests.map(c => [c.x, c.y]),
+    h: game.hazards.map(h => [r1(h.x), r1(h.y), h.t, h.seed]),
     e: net.events.splice(0),
   };
   for (const conn of net.guests.values()) if (conn.open) { try { conn.send(snap); } catch (e) {} }
@@ -1005,7 +1223,12 @@ function renderSeats() {
   for (const conn of net.guests.values()) rows.push({ name: conn.guestName, who: 'Joined' });
   const want = Math.max(rows.length, readSetup().foes + 1);
   for (let i = rows.length; i < Math.min(4, want); i++) rows.push({ name: ROSTER[i].name, who: 'AI' });
-  el.seats.innerHTML = rows.map((r, i) => `<li style="--c:${ROSTER[i].body}"><span class="chip"></span>${esc(r.name)}<span class="who">${r.who}</span></li>`).join('');
+  const teams = readSetup().match === 'thh';
+  el.seats.innerHTML = rows.map((r, i) => {
+    const tm = TEAMS[teamPick[i]];
+    const btn = teams ? `<button type="button" class="ghost teamBtn" data-i="${i}" style="--t:${tm.color}" aria-label="Switch ${esc(r.name)} to the other team">${tm.name}</button>` : '';
+    return `<li style="--c:${ROSTER[i].body}"><span class="chip"></span>${esc(r.name)}<span class="who">${r.who}</span>${btn}</li>`;
+  }).join('');
 }
 
 // ---------- online: guest ----------
@@ -1027,7 +1250,8 @@ function joinRoom() {
   el.nameInput.value = name; store.set('qs-name', name);
   closeNet();
   net.role = 'guest'; game.attract = false; game.mySlot = -1; net.lastSnapAt = 0; net.wasOver = false;
-  game.archers = []; game.arrows = []; game.parts = []; game.banner = { top: 'Connecting', sub: '' };
+  game.archers = []; game.arrows = []; game.parts = []; game.chests = []; game.hazards = []; game.popups = [];
+  game.banner = { top: 'Connecting', sub: '' };
   el.joinBtn.disabled = true;
   joinStatus('Connecting…');
   const peer = new Peer(undefined, { debug: 0 });
@@ -1062,20 +1286,26 @@ function applySnap(s) {
   net.lastSnapAt = performance.now();
   if (!el.joinOv.hidden) hideOverlays();
   if (s.mi !== game.mapIdx || grid !== MAPS[s.mi].rows) { game.mapIdx = s.mi; grid = MAPS[s.mi].rows; buildMapCanvas(); }
-  game.mode = s.m; game.round = s.rd; game.freezeT = s.fz; game.banner = s.b; game.shake = s.sh; game.settings.goal = s.g;
+  game.mode = s.m; game.round = s.rd; game.freezeT = s.fz; game.banner = s.b; game.shake = s.sh;
+  game.settings.goal = s.g; game.settings.match = MODES[s.md] ? s.md : 'hh';
+  game.teamScore = Array.isArray(s.ts) ? [+s.ts[0] || 0, +s.ts[1] || 0] : [0, 0];
   game.feed = Array.isArray(s.f) ? { k: s.f[0] & 3, v: s.f[1] & 3, t: s.f[2] } : null;
   game.archers = s.a.map(v => {
-    const r = ROSTER[v[0]];
-    return { slot: v[0], body: r.body, dark: r.dark, x: v[1], y: v[2], vx: v[3], vy: v[4], facing: v[5], aimX: v[6], aimY: v[7],
-      arrows: v[8], alive: !!v[9], dodgeT: v[10], onGround: !!v[11], runF: v[12], score: v[13], youT: v[14], name: cleanName(v[15]) || r.name,
-      shieldT: +v[16] || 0, w: 8, h: 12 };
+    const r = ROSTER[v[0] & 3], team = v[17] & 1, fl = +v[18] || 0;
+    return { slot: v[0] & 3, body: r.body, dark: teamMode() ? TEAMS[team].dark : r.dark, x: v[1], y: v[2], vx: v[3], vy: v[4], facing: v[5], aimX: v[6], aimY: v[7],
+      quiver: String(v[8]).replace(/[^nblrd]/g, '').slice(0, MAX_ARROWS).split('').filter(Boolean), alive: !!v[9], dodgeT: v[10], onGround: !!v[11], runF: v[12],
+      score: v[13], youT: v[14], name: cleanName(v[15]) || r.name, shieldT: +v[16] || 0, team, shield: !!(fl & 1), wings: !!(fl & 2), boots: !!(fl & 4), w: 8, h: 12 };
   });
-  game.arrows = s.r.map(v => ({ x: v[0], y: v[1], ang: v[2], state: ['fly', 'drop', 'stuck'][v[3]] || 'stuck', slot: v[4] & 3 }));
+  game.arrows = s.r.map(v => ({ x: v[0], y: v[1], ang: v[2], state: ['fly', 'drop', 'stuck'][v[3]] || 'stuck', slot: v[4] & 3, type: ITEMS[v[5]] || v[5] === 'n' ? v[5] : 'n' }));
+  game.chests = (s.c || []).map(v => ({ x: v[0], y: v[1], w: 10, h: 9 }));
+  game.hazards = (s.h || []).map(v => ({ x: v[0], y: v[1], w: 18, h: 14, t: v[2], seed: v[3] }));
   for (const ev of s.e || []) {
     if (ev[0] === 's' && sfx[ev[1]]) sfx[ev[1]]();
     else if (ev[0] === 'k') deathParts(ev[1], ev[2], ev[3] & 3);
     else if (ev[0] === 'c') catchParts(ev[1], ev[2]);
-    else if (ev[0] === 'r') respawnParts(ev[1], ev[2]);
+    else if (ev[0] === 'b') boomParts(ev[1], ev[2]);
+    else if (ev[0] === 'h') shieldParts(ev[1], ev[2]);
+    else if (ev[0] === 'p' && ITEMS[ev[2]]) { game.popups.push({ slot: ev[1] & 3, item: ev[2], t: 80 }); chestParts(ev[3], ev[4]); }
   }
   if (!!s.p !== game.paused) {
     game.paused = !!s.p;
@@ -1084,7 +1314,7 @@ function applySnap(s) {
     el.pauseOv.hidden = !game.paused;
   }
   if (s.m === 'over' && !net.wasOver) {
-    const champ = game.archers.slice().sort((a, b) => b.score - a.score)[0];
+    const champ = findChamp() || (teamMode() ? { team: game.teamScore[0] >= game.teamScore[1] ? 0 : 1 } : game.archers.slice().sort((a, b) => b.score - a.score)[0]);
     if (champ) showEnd(champ, false);
   } else if (s.m === 'play' && net.wasOver) el.endOv.hidden = true;
   net.wasOver = s.m === 'over';
@@ -1092,6 +1322,8 @@ function applySnap(s) {
 
 function guestTick() {
   updateParts();
+  for (const p of game.popups) p.t--;
+  game.popups = game.popups.filter(p => p.t > 0);
   for (const a of game.archers) if (a.alive && a.dodgeT > 0 && Math.random() < 0.6) spawnPart(a.x + rand(a.w), a.y + rand(a.h), 0, 0, 10, a.body, 0);
   if (game.shake > 0) game.shake *= 0.85;
   if (net.host && net.host.open && game.frame % 30 === 0) sendGuestInput();
@@ -1174,13 +1406,20 @@ function drawWrapped(x, y, w, h, fn) {
   }
 }
 
+const arrowColor = (type, slot) => type === 'n' ? ROSTER[slot].body : ITEMS[type].color;
+
 function drawArcher(a) {
   if (a.shieldT > 0 && game.frame % 6 < 2) return;
   drawWrapped(a.x, a.y, a.w, a.h, (X, Y) => {
     const x = Math.round(X), y = Math.round(Y), f = a.facing;
     const flash = a.dodgeT > 0 && game.frame % 4 < 2;
     const body = flash ? '#ffffff' : a.body, dark = flash ? '#d8d8ff' : a.dark;
-    ctx.fillStyle = '#2a2236';
+    if (a.wings) {
+      const wx = f > 0 ? x - 3 : x + 8, flapUp = !a.onGround && game.frame % 10 < 5;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(wx, y + (flapUp ? 1 : 4), 3, 1); ctx.fillRect(wx + (f > 0 ? 1 : 0), y + (flapUp ? 2 : 5), 2, 2);
+    }
+    ctx.fillStyle = a.boots ? '#ffd447' : '#2a2236';
     const step = a.onGround && a.runF ? Math.floor(a.runF / 5) % 2 : 0;
     if (!a.onGround) { ctx.fillRect(x + 1, y + 9, 2, 2); ctx.fillRect(x + 5, y + 10, 2, 2); }
     else { ctx.fillRect(x + 1 + step, y + 10, 2, 2); ctx.fillRect(x + 5 - step, y + 10, 2, 2); }
@@ -1195,68 +1434,107 @@ function drawArcher(a) {
     const bx = x + 4 + nx * 5, by = y + 6 + ny * 5, px = -ny, py = nx;
     ctx.fillStyle = '#c99357';
     for (let k = -3; k <= 3; k++) { const bend = (3 - Math.abs(k)) * 0.5; ctx.fillRect(Math.round(bx + px * k + nx * bend), Math.round(by + py * k + ny * bend), 1, 1); }
-    ctx.fillStyle = a.body;
-    for (let i = 0; i < a.arrows; i++) ctx.fillRect(x + 4 - a.arrows + i * 2, y - 4, 1, 2);
+    const n = a.quiver.length;
+    a.quiver.forEach((t, i) => { ctx.fillStyle = arrowColor(t, a.slot); ctx.fillRect(x + 4 - n + i * 2, y - 4, 1, 2); });
+    if (teamMode()) { ctx.fillStyle = TEAMS[a.team].color; ctx.fillRect(x + 2, y - 6, 4, 1); }
+    if (a.shield) { ctx.strokeStyle = 'rgba(191,230,255,.85)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x + 4, y + 6, 9, 0, Math.PI * 2); ctx.stroke(); }
     if (a.youT > 0 && a.slot === game.mySlot && game.frame % 20 < 14) { ctx.fillStyle = '#eee5d3'; ctx.fillRect(x + 2, y - 10, 5, 1); ctx.fillRect(x + 3, y - 9, 3, 1); ctx.fillRect(x + 4, y - 8, 1, 1); }
   });
 }
 
 function drawArrow(ar) {
-  const ca = Math.cos(ar.ang), sa = Math.sin(ar.ang), body = ROSTER[ar.slot].body;
+  const ca = Math.cos(ar.ang), sa = Math.sin(ar.ang), fletch = ROSTER[ar.slot].body, type = ar.type;
   drawWrapped(ar.x - 10, ar.y - 10, 20, 20, (X, Y) => {
     const x = X + 10, y = Y + 10;
-    ctx.fillStyle = '#d9c6a0';
+    ctx.fillStyle = type === 'l' ? '#7ef3ff' : '#d9c6a0';
     for (let k = 1; k <= 8; k++) ctx.fillRect(Math.round(x - ca * k), Math.round(y - sa * k), 1, 1);
-    ctx.fillStyle = '#f4f4ff'; ctx.fillRect(Math.round(x), Math.round(y), 1, 1); ctx.fillRect(Math.round(x - ca), Math.round(y - sa), 1, 1);
-    ctx.fillStyle = body;
+    if (type === 'l' && ar.state === 'fly') { ctx.fillStyle = 'rgba(126,243,255,.35)'; for (let k = 9; k <= 18; k++) ctx.fillRect(Math.round(x - ca * k), Math.round(y - sa * k), 1, 1); }
+    const head = type === 'n' ? '#f4f4ff' : ITEMS[type].color;
+    ctx.fillStyle = head; ctx.fillRect(Math.round(x), Math.round(y), 1, 1); ctx.fillRect(Math.round(x - ca), Math.round(y - sa), 1, 1);
+    if (type === 'b') ctx.fillRect(Math.round(x - 1), Math.round(y - 1), 2, 2);
+    if (type === 'd') { ctx.fillRect(Math.round(x + ca), Math.round(y + sa), 1, 1); }
+    ctx.fillStyle = fletch;
     for (let k = 7; k <= 9; k++) { ctx.fillRect(Math.round(x - ca * k + sa), Math.round(y - sa * k - ca), 1, 1); ctx.fillRect(Math.round(x - ca * k - sa), Math.round(y - sa * k + ca), 1, 1); }
   });
 }
 
-function textCentered(str, y, size, color) {
+function drawChest(ch) {
+  const x = Math.round(ch.x), y = Math.round(ch.y);
+  ctx.fillStyle = '#5a3820'; ctx.fillRect(x, y + 1, 10, 8);
+  ctx.fillStyle = '#8a5a34'; ctx.fillRect(x + 1, y + 2, 8, 6);
+  ctx.fillStyle = '#6e4628'; ctx.fillRect(x, y, 10, 3);
+  ctx.fillStyle = '#f4c542'; ctx.fillRect(x, y + 3, 10, 1); ctx.fillRect(x + 4, y + 3, 2, 3);
+  if ((game.frame + x) % 50 < 6) { ctx.fillStyle = '#fff4d8'; ctx.fillRect(x + 8, y - 2, 1, 1); ctx.fillRect(x + 7, y - 1, 3, 1); ctx.fillRect(x + 8, y, 1, 1); }
+}
+
+function drawHazard(h) {
+  const fade = h.t < 60 && game.frame % 6 < 3;
+  if (fade) return;
+  for (let i = 0; i < 16; i++) {
+    const px = Math.round(h.x + hash(h.seed, i) * h.w), py = Math.round(h.y + hash(i, h.seed) * h.h);
+    ctx.fillStyle = i % 3 ? '#3f8a3a' : '#6fd36a'; ctx.fillRect(mod(px, W), mod(py, H), 2, 1);
+    ctx.fillStyle = '#a7f29a'; ctx.fillRect(mod(px + 1, W), mod(py - 1, H), 1, 1);
+  }
+}
+
+function canvasText(str, x, y, size, color) {
   ctx.font = `700 ${size}px Silkscreen, ui-monospace, monospace`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#120e1a'; ctx.fillText(str, W / 2 + 1, y + 1);
-  ctx.fillStyle = color; ctx.fillText(str, W / 2, y);
+  ctx.fillStyle = '#120e1a'; ctx.fillText(str, x + 1, y + 1);
+  ctx.fillStyle = color; ctx.fillText(str, x, y);
 }
+const textCentered = (str, y, size, color) => canvasText(str, W / 2, y, size, color);
 
 function render() {
   ctx.save();
   if (game.shake > 0.5) ctx.translate(Math.round(rand(-game.shake, game.shake)), Math.round(rand(-game.shake, game.shake)));
   ctx.drawImage(bg, 0, 0); ctx.drawImage(mapCv, 0, 0);
+  for (const h of game.hazards) drawHazard(h);
+  for (const ch of game.chests) drawChest(ch);
   for (const ar of game.arrows) drawArrow(ar);
   for (const a of game.archers) if (a.alive) drawArcher(a);
   for (const p of game.parts) { ctx.fillStyle = p.color; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
+  for (const p of game.popups) {
+    const a = game.archers.find(x => x.slot === p.slot);
+    if (a) canvasText(ITEMS[p.item].name.toUpperCase(), Math.min(W - 40, Math.max(40, a.x + 4)), a.y - 12 - (80 - p.t) * 0.15, 8, ITEMS[p.item].color);
+  }
   ctx.restore();
   const b = game.banner;
   if (b) {
     let top = b.top, color = b.color || '#f4a53c';
     if (b.win !== undefined) {
       const w = game.archers.find(a => a.slot === b.win);
-      top = b.win === game.mySlot ? 'You win' : (w ? w.name : ROSTER[b.win & 3].name) + ' wins';
+      top = b.win === game.mySlot ? 'You take the round' : (w ? w.name : ROSTER[b.win & 3].name) + ' takes the round';
       color = ROSTER[b.win & 3].body;
+    } else if (b.team !== undefined && b.team >= 0) {
+      top = TEAMS[b.team & 1].name + ' team survives';
+      color = TEAMS[b.team & 1].color;
     }
     ctx.fillStyle = 'rgba(18,14,26,.55)'; ctx.fillRect(0, 96, W, b.sub ? 44 : 30);
-    textCentered(String(top).toUpperCase(), 110, 16, color);
+    textCentered(String(top).toUpperCase(), 110, top.length > 18 ? 12 : 16, color);
     if (b.sub) textCentered(String(b.sub).toUpperCase(), 128, 8, '#eee5d3');
   }
   if (game.feed && !b) {
     const f = game.feed, nm = s => s === game.mySlot ? 'You' : (game.archers.find(a => a.slot === s) || ROSTER[s]).name;
-    const txt = f.k === f.v ? (f.k === game.mySlot ? 'You hit your own arrow  -1' : nm(f.k) + ' hit their own arrow  -1') : nm(f.k) + " KO'd " + nm(f.v);
-    textCentered(txt.toUpperCase(), 24, 8, ROSTER[f.k].body);
+    textCentered((nm(f.k) + " KO'd " + nm(f.v)).toUpperCase(), 24, 8, ROSTER[f.k].body);
   }
-  if (game.attract && game.mode === 'play' && net.role === 'off') textCentered('DEMO', 10, 8, '#a69cba');
+  if (game.attract && game.mode === 'play' && net.role === 'off') textCentered('DEMO · ' + MODES[game.settings.match].name.toUpperCase(), 10, 8, '#a69cba');
   if (net.role === 'guest' && net.lastSnapAt && game.mySlot < 0) textCentered('WATCHING', 10, 8, '#a69cba');
-  if (net.role === 'guest' && net.lastSnapAt && performance.now() - net.lastSnapAt > 1500) textCentered('WAITING FOR HOST…', 22, 8, '#f4a53c');
+  if (net.role === 'guest' && net.lastSnapAt && performance.now() - net.lastSnapAt > 1500) textCentered('WAITING FOR HOST…', 36, 8, '#f4a53c');
   if (net.role === 'host' && net.matchOn) textCentered('ROOM ' + net.code + ' · ' + (net.guests.size + 1) + ' PLAYERS', 10, 8, '#a69cba');
 }
 
 // ---------- scoreboard ----------
 let lastBoard = '';
 function updateBoard() {
-  const goal = game.settings.goal;
-  const html = game.archers.map(a => {
-    return `<div class="slot${a.alive ? '' : ' dead'}" style="--c:${a.body}"><span class="chip"></span><span class="nm">${esc(displayName(a))}</span><span class="pips" aria-label="${a.score} of ${goal} KOs">${a.score}/${goal} KO</span><span class="q" aria-label="${a.arrows} arrows">${a.arrows}↑</span></div>`;
+  const goal = game.settings.goal, lms = game.settings.match === 'lms';
+  let html = '';
+  if (teamMode()) html += TEAMS.map((t, i) => `<div class="slot team" style="--c:${t.color}"><span class="chip"></span><span class="nm">${t.name} team</span><span class="pips" aria-label="${game.teamScore[i]} of ${goal} team KOs">${game.teamScore[i]}/${goal}</span></div>`).join('');
+  html += game.archers.map(a => {
+    const sc = teamMode() ? `${a.score}` : `${a.score}/${goal}`;
+    const label = `${a.score} ${lms ? 'rounds won' : 'KOs'}`;
+    const chip = teamMode() ? TEAMS[a.team].color : a.body;
+    return `<div class="slot${a.alive ? '' : ' dead'}" style="--c:${chip}"><span class="chip"></span><span class="nm" style="color:${a.body}">${esc(displayName(a))}</span><span class="pips" aria-label="${label}" title="${label}">${sc}</span><span class="q" aria-label="${a.quiver.length} arrows">${a.quiver.length}↑</span></div>`;
   }).join('');
   if (html !== lastBoard) { el.board.innerHTML = html; lastBoard = html; }
 }
@@ -1275,7 +1553,14 @@ function showOnly(k) { hideOverlays(); el[k].hidden = false; }
 const lobbyStatus = t => { $('lobbyStatus').textContent = t; };
 const joinStatus = t => { $('joinStatus').textContent = t; };
 const radio = name => document.querySelector(`input[name="${name}"]:checked`).value;
-function readSetup() { return { mode: radio('mode'), foes: +radio('foes'), diff: radio('diff'), goal: +radio('goal') }; }
+function readSetup() { return { mode: radio('mode'), foes: +radio('foes'), diff: radio('diff'), goal: +radio('goal'), match: radio('match'), treasure: radio('loot') === 'on' }; }
+
+function describeMode() {
+  const m = MODES[radio('match')];
+  $('startTitle').textContent = m.name;
+  $('startText').textContent = m.text + (radio('match') === 'thh' ? ' Solo, you and Rose take on Tide and Gilt.' : '');
+  $('goalLabel').textContent = m.goalLabel;
+}
 
 function beginSolo() {
   ensureAudio();
@@ -1292,7 +1577,7 @@ function togglePause() {
   el.pauseOv.hidden = !game.paused;
   if (game.paused) $('resumeBtn').focus();
 }
-function demo() { startMatch({ mode: 'watch', foes: 3, diff: 'normal', goal: 10 }, true); }
+function demo() { startMatch({ mode: 'watch', foes: 3, diff: 'normal', goal: 10, match: 'hh', treasure: true }, true); }
 function toMenu() {
   closeNet();
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
@@ -1323,8 +1608,18 @@ $('copyBtn').addEventListener('click', () => {
   else el.roomLink.select();
 });
 el.roomLink.addEventListener('focus', () => el.roomLink.select());
+el.seats.addEventListener('click', e => {
+  const b = e.target.closest('.teamBtn');
+  if (!b) return;
+  const i = +b.dataset.i; teamPick[i] = 1 - teamPick[i]; renderSeats();
+});
 document.querySelectorAll('input[name="snd"]').forEach(r => r.addEventListener('change', () => { soundOn = radio('snd') === 'on'; }));
 document.querySelectorAll('input[name="foes"]').forEach(r => r.addEventListener('change', () => { if (net.role === 'host') renderSeats(); }));
+document.querySelectorAll('input[name="match"]').forEach(r => r.addEventListener('change', () => {
+  $(radio('match') === 'lms' ? 'goal-5' : 'goal-10').checked = true;
+  describeMode();
+  if (net.role === 'host') renderSeats();
+}));
 el.nameInput.value = store.get('qs-name') || '';
 el.nameInput.addEventListener('change', () => { store.set('qs-name', cleanName(el.nameInput.value)); if (net.role === 'host') renderSeats(); });
 
@@ -1351,6 +1646,7 @@ try {
   };
 } catch (e) {}
 
+describeMode();
 demo();
 const code = (location.hash || '').slice(1).toUpperCase();
 if (/^[A-Z0-9]{5}$/.test(code)) showJoin(code);

@@ -4,15 +4,40 @@ A TowerFall-style archery arena that runs in the browser. Fight AI archers solo,
 
 **Play:** https://dpott197.github.io/quiver-spire/
 
-## Scoring
+## Modes
 
-Every KO scores a point, by arrow or by landing on someone's head. KO'd archers respawn after two seconds, flickering for a moment while they can't be hit. Hitting yourself with your own arrow costs a point. First to the KO target (5, 10 or 20) wins the match.
+Every mode is played in rounds. A round lasts until one archer (or one team) is left, or 90 seconds pass.
+
+| Mode | How you score |
+| --- | --- |
+| **Head Hunters** (default) | 1 point per KO. First to the KO target wins. |
+| **Last Man Standing** | 1 point for being the last archer alive in a round. |
+| **Team Head Hunters** | Red against Blue. Every KO scores for your team. Teammates can't hurt each other. |
+
+Your own arrows never hurt you. A match ends at the end of a round once someone has reached the target with a clear lead.
+
+## Treasure
+
+Chests drop into the arena during each round. Touch one to open it. Power-ups last until the round ends.
+
+| Power-up | Effect |
+| --- | --- |
+| Bomb arrows | Two arrows that explode on impact |
+| Laser arrows | Two fast arrows that fly straight and bounce off walls |
+| Bramble arrows | Two arrows that leave thorns rivals can't touch |
+| Drill arrows | Two arrows that bore through one block |
+| Shield | Blocks the next hit |
+| Wings | Flap as often as you like in mid-air |
+| Speed boots | Run faster |
+
+Chests can be turned off in the match setup.
 
 ## Online play
 
 1. Click **Host online**. You get a link like `https://dpott197.github.io/quiver-spire/#K7QX5`.
 2. Send it to up to three friends. They open it, pick a name and join.
-3. Click **Start match**. AI archers fill any empty seats, and take over if someone leaves.
+3. In Team Head Hunters, click a seat's team button in the lobby to move it between Red and Blue.
+4. Click **Start match**. AI archers fill any empty seats, and take over if someone leaves.
 
 The host's browser runs the match and friends connect to it directly over WebRTC ([PeerJS](https://peerjs.com/) handles the connection setup). There is no game server. The host should keep the page open for the whole match. A few strict networks block direct connections; if a friend can't join, try another network.
 
@@ -22,7 +47,7 @@ The host's browser runs the match and friends connect to it directly over WebRTC
 | --- | --- |
 | Run | ← → or A D |
 | Aim up / down, drop through ledges | ↑ ↓ or W S |
-| Jump (wall-jump against walls) | Z, J or Space |
+| Jump, double-jump in mid-air, wall-jump | Z, J or Space |
 | Shoot (8 directions) | X or K |
 | Dodge (catches arrows) | C, L or Shift |
 | Pause (host only online) | Esc or P |
