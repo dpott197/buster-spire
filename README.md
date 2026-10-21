@@ -4,6 +4,10 @@ A TowerFall-style archery arena that runs in the browser. Fight AI archers solo,
 
 **Play:** https://dpott197.github.io/quiver-spire/
 
+## Scoring
+
+Every KO scores a point, by arrow or by landing on someone's head. KO'd archers respawn after two seconds, flickering for a moment while they can't be hit. Hitting yourself with your own arrow costs a point. First to the KO target (5, 10 or 20) wins the match.
+
 ## Online play
 
 1. Click **Host online**. You get a link like `https://dpott197.github.io/quiver-spire/#K7QX5`.

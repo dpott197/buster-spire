@@ -107,8 +107,8 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
     <canvas id="game" width="320" height="240" aria-label="Game arena"></canvas>
     <div class="overlay" id="startOv">
       <div class="panel">
-        <h2>Last archer standing</h2>
-        <p>Three arrows each. Shoot, stomp, or dodge into an arrow to catch it. The edges wrap around.</p>
+        <h2>Most KOs wins</h2>
+        <p>Shoot or stomp rivals to score. KO'd archers respawn after two seconds. Dodge into an arrow to catch it. The edges wrap around.</p>
         <div class="btns"><button class="big" id="startBtn" type="button">Play solo</button><button class="ghost" id="hostBtn" type="button">Host online</button></div>
       </div>
     </div>
@@ -180,11 +180,11 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
           <label><input type="radio" name="diff" id="diff-normal" value="normal" checked><span>Normal</span></label>
           <label><input type="radio" name="diff" id="diff-hard" value="hard"><span>Hard</span></label>
         </div></div>
-      <div class="row"><label>Rounds to win</label>
+      <div class="row"><label>KOs to win</label>
         <div class="seg" role="radiogroup">
-          <label><input type="radio" name="goal" id="goal-3" value="3"><span>3</span></label>
-          <label><input type="radio" name="goal" id="goal-5" value="5" checked><span>5</span></label>
-          <label><input type="radio" name="goal" id="goal-10" value="10"><span>10</span></label>
+          <label><input type="radio" name="goal" id="goal-5" value="5"><span>5</span></label>
+          <label><input type="radio" name="goal" id="goal-10" value="10" checked><span>10</span></label>
+          <label><input type="radio" name="goal" id="goal-20" value="20"><span>20</span></label>
         </div></div>
       <div class="row"><label>Sound</label>
         <div class="seg" role="radiogroup">
@@ -202,7 +202,7 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
         <dt><kbd>C</kbd> <kbd>L</kbd> <kbd>Shift</kbd></dt><dd>Dodge. Catches arrows mid-dash</dd>
         <dt><kbd>Esc</kbd> <kbd>P</kbd></dt><dd>Pause (online, only the host can pause)</dd>
       </dl>
-      <p class="note">Land on a head to stomp. Walk over stuck or dropped arrows to collect them, up to six. Online, the host's browser runs the match, so the host should keep this page open.</p>
+      <p class="note">Land on a head to stomp. Walk over stuck or dropped arrows to collect them, up to six. Hitting yourself with your own arrow costs a KO. Archers flicker for a moment after respawning and can't be hit. Online, the host's browser runs the match, so the host should keep this page open.</p>
     </section>
   </div>
 </div>
@@ -212,7 +212,7 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
 'use strict';
 const W = 320, H = 240, T = 16, COLS = 20, ROWS = 15;
 const GRAV = 0.28, MAX_FALL = 4.2, RUN = 1.6, JUMP_V = -5.7, ARROW_SPEED = 5.5, ARROW_G = 0.07, MAX_ARROWS = 6;
-const ROUND_LIMIT = 60 * 90;
+const RESPAWN = 120, SHIELD = 90, MAX_STUCK = 30;
 const ROOM_PREFIX = 'quiver-spire-';
 
 const MAPS = [
@@ -313,9 +313,9 @@ function boxesOverlap(a, b) {
 // ---------- state ----------
 const game = {
   mode: 'menu', attract: true, paused: false, frame: 0, mySlot: -1,
-  settings: { mode: 'watch', foes: 3, diff: 'normal', goal: 5 },
+  settings: { mode: 'watch', foes: 3, diff: 'normal', goal: 10 },
   archers: [], arrows: [], parts: [], mapIdx: 0, round: 0, openRows: [],
-  banner: null, roundT: 0, endT: 0, freezeT: 0, shake: 0, arrowId: 0,
+  banner: null, feed: null, champ: null, roundT: 0, endT: 0, freezeT: 0, shake: 0, arrowId: 0,
 };
 
 // Online: 'off', 'host' (runs the simulation) or 'guest' (sends input, draws host snapshots)
@@ -434,7 +434,7 @@ function makeArcher(slot, seat, level) {
     ai: kind === 'ai' ? { lv: AI_LEVELS[level] } : null, remote: kind === 'remote' ? seat.peer : null,
     x: 0, y: 0, vx: 0, vy: 0, w: 8, h: 12, facing: 1, arrows: 3, alive: true, onGround: false, onPlat: false,
     coyote: 0, jumpBuf: 0, wallDir: 0, dropT: 0, dodgeT: 0, dodgeCd: 0, dodgeX: 0, dodgeY: 0, shootCd: 0,
-    aimX: 1, aimY: 0, score: 0, runF: 0, prevY: 0, youT: 0,
+    aimX: 1, aimY: 0, score: 0, runF: 0, prevY: 0, youT: 0, respawnT: 0, shieldT: 0,
   };
 }
 
@@ -467,13 +467,29 @@ function startRound() {
   game.archers.forEach((a, i) => {
     const [c, r] = spawns[i % spawns.length];
     Object.assign(a, { x: c * T + 4, y: (r + 1) * T - a.h, vx: 0, vy: 0, arrows: 3, alive: true, dodgeT: 0, dodgeCd: 0,
-      shootCd: 0, jumpBuf: 0, coyote: 0, dropT: 0, facing: c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 120 });
+      shootCd: 0, jumpBuf: 0, coyote: 0, dropT: 0, respawnT: 0, shieldT: 0, facing: c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 120 });
     if (a.ai) resetAI(a);
   });
-  game.mode = 'play'; game.freezeT = 70; game.roundT = 0; game.endT = 0;
-  game.banner = { top: 'Round ' + game.round, sub: map.name };
+  game.mode = 'play'; game.freezeT = 70; game.roundT = 0; game.endT = 0; game.feed = null; game.champ = null;
+  game.banner = { top: 'First to ' + game.settings.goal + ' KOs', sub: map.name };
   buildMapCanvas();
   sfx.round();
+}
+
+// a KO'd archer comes back at the spawn point farthest from everyone else, briefly shielded
+function respawn(a) {
+  const others = game.archers.filter(e => e.alive && e !== a);
+  let best = null, bd = -1;
+  for (const [c, r] of MAPS[game.mapIdx].spawns) {
+    const x = c * T + 4, y = (r + 1) * T - a.h;
+    const d = others.length ? Math.min(...others.map(e => Math.hypot(wd(e.x - x, W), wd(e.y - y, H)))) : rand(100);
+    if (d > bd) { bd = d; best = { x, y, c }; }
+  }
+  Object.assign(a, { x: best.x, y: best.y, vx: 0, vy: 0, arrows: 3, alive: true, dodgeT: 0, dodgeCd: 0, shootCd: 0, jumpBuf: 0,
+    coyote: 0, dropT: 0, shieldT: SHIELD, facing: best.c < COLS / 2 ? 1 : -1, youT: a.ai ? 0 : 60 });
+  if (a.ai) resetAI(a);
+  respawnParts(a.x + 4, a.y + 6);
+  if (net.role === 'host') net.events.push(['r', r1(a.x + 4), r1(a.y + 6)]);
 }
 
 // ---------- archers ----------
@@ -581,10 +597,20 @@ function deathParts(cx, cy, slot) {
   for (let i = 0; i < 8; i++) spawnPart(cx, cy, rand(-1, 1), rand(-1.6, -0.2), 50 + rand(30), '#eee5d3', 0.03);
 }
 function catchParts(x, y) { for (let i = 0; i < 6; i++) spawnPart(x, y, rand(-1, 1), rand(-1, 1), 14, '#ffffff', 0); }
+function respawnParts(x, y) { for (let i = 0; i < 12; i++) spawnPart(x, y, rand(-1.5, 1.5), rand(-1.5, 1.5), 20, '#eee5d3', 0); }
 
-function kill(victim, how) {
+function kill(victim, how, killer) {
   if (!victim.alive) return;
-  victim.alive = false;
+  victim.alive = false; victim.respawnT = RESPAWN;
+  if (killer && !game.endT) {
+    if (killer === victim) victim.score = Math.max(0, victim.score - 1);
+    else killer.score++;
+    game.feed = { k: killer.slot, v: victim.slot, t: 100 };
+    if (killer !== victim && killer.score >= game.settings.goal) {
+      game.endT = 150; game.champ = killer;
+      game.banner = { win: killer.slot, sub: 'First to ' + game.settings.goal + ' KOs' };
+    }
+  }
   const cx = victim.x + victim.w / 2, cy = victim.y + victim.h / 2;
   deathParts(cx, cy, victim.slot);
   if (net.role === 'host') net.events.push(['k', r1(cx), r1(cy), victim.slot]);
@@ -614,14 +640,14 @@ function updateArrows() {
         ar.x = mod(ar.x + ar.vx / 3, W); ar.y = mod(ar.y + ar.vy / 3, H);
         if (solidPx(ar.x, ar.y)) { ar.ang = Math.atan2(ar.vy, ar.vx); stick(ar); sfx.thunk(); break; }
         for (const a of game.archers) {
-          if (!a.alive || (a === ar.owner && ar.grace > 0)) continue;
+          if (!a.alive || a.shieldT > 0 || (a === ar.owner && ar.grace > 0)) continue;
           if (!inBox(ar.x, ar.y, a.x - 1, a.y - 1, a.w + 2, a.h + 2)) continue;
           if (a.dodgeT > 0 && a.arrows < MAX_ARROWS) {
             a.arrows++; ar.dead = true; sfx.catch();
             catchParts(ar.x, ar.y);
             if (net.role === 'host') net.events.push(['c', r1(ar.x), r1(ar.y)]);
           } else {
-            kill(a, 'arrow');
+            kill(a, 'arrow', ar.owner);
             ar.state = 'drop'; ar.vx = -ar.vx * 0.15; ar.vy = -1.8; ar.owner = null;
           }
           break;
@@ -642,6 +668,9 @@ function updateArrows() {
     }
   }
   game.arrows = game.arrows.filter(a => !a.dead);
+  // respawns keep adding arrows, so clear the oldest stuck ones once the arena gets crowded
+  const stuck = game.arrows.filter(a => a.state === 'stuck');
+  if (stuck.length > MAX_STUCK) { const old = new Set(stuck.slice(0, stuck.length - MAX_STUCK)); game.arrows = game.arrows.filter(a => !old.has(a)); }
 }
 
 // ---------- AI ----------
@@ -654,7 +683,7 @@ function simShot(me, dx, dy, lead) {
       x = mod(x + vx / 3, W); y = mod(y + vy / 3, H);
       if (solidPx(x, y)) return null;
       for (const e of game.archers) {
-        if (!e.alive) continue;
+        if (!e.alive || e.shieldT > 0) continue;
         const px = e.x + e.vx * t * lead, py = e.y + (e.onGround ? 0 : e.vy * t * lead * 0.5);
         if (inBox(x, y, px - 1, py - 1, e.w + 2, e.h + 2)) return e === me ? null : e;
       }
@@ -821,41 +850,32 @@ function step() {
 function simulate() {
   if (game.paused || game.mode !== 'play') { updateParts(); return; }
   if (game.freezeT > 0) { game.freezeT--; if (game.freezeT === 0) game.banner = null; }
-  const frozen = game.freezeT > 0;
+  if (game.feed && --game.feed.t <= 0) game.feed = null;
+  // the arena freezes at the start, and on the winning KO
+  const frozen = game.freezeT > 0 || game.endT > 0;
 
   for (const a of game.archers) {
-    if (!a.alive) continue;
+    if (!a.alive) { if (!frozen && --a.respawnT <= 0) respawn(a); continue; }
+    if (a.shieldT > 0 && !frozen) a.shieldT--;
     let inp = a.ai ? aiInput(a) : a.remote ? remoteInput(a) : humanInput();
     if (frozen) inp = blankInput();
+    if (game.endT > 0) continue;
     updateArcher(a, inp);
   }
 
-  // stomps
-  for (const a of game.archers) for (const b of game.archers) {
-    if (a === b || !a.alive || !b.alive || a.vy <= 0 || b.dodgeT > 0) continue;
-    if (!boxesOverlap(a, b)) continue;
-    if (wd(a.prevY + a.h - b.y, H) <= 4) { kill(b, 'stomp'); a.vy = -3.8; sfx.stomp(); }
+  if (!frozen) {
+    // stomps
+    for (const a of game.archers) for (const b of game.archers) {
+      if (a === b || !a.alive || !b.alive || a.vy <= 0 || b.dodgeT > 0 || b.shieldT > 0) continue;
+      if (!boxesOverlap(a, b)) continue;
+      if (wd(a.prevY + a.h - b.y, H) <= 4) { kill(b, 'stomp', a); a.vy = -3.8; sfx.stomp(); }
+    }
+    updateArrows();
   }
-  updateArrows();
   updateParts();
   if (game.shake > 0) game.shake *= 0.85;
-
-  const alive = game.archers.filter(a => a.alive);
   game.roundT++;
-  if (game.endT === 0 && (alive.length <= 1 || game.roundT > ROUND_LIMIT)) game.endT = 100;
-  if (game.endT > 0) {
-    if (game.endT === 100) {
-      const winner = alive.length === 1 && game.roundT <= ROUND_LIMIT ? alive[0] : null;
-      game.pendingWinner = winner;
-      game.banner = winner ? { win: winner.slot, sub: '' } : { top: 'Draw', sub: game.roundT > ROUND_LIMIT ? 'Time ran out' : 'No one survived' };
-    }
-    if (--game.endT === 0) {
-      const w = game.pendingWinner;
-      if (w && w.alive) w.score++;
-      const champ = game.archers.find(a => a.score >= game.settings.goal);
-      if (champ) endMatch(champ); else startRound();
-    }
-  }
+  if (game.endT > 0 && --game.endT === 0) endMatch(game.champ);
 }
 
 const displayName = a => a.slot === game.mySlot ? 'You' : a.name;
@@ -868,7 +888,7 @@ function endMatch(champ) {
 function showEnd(champ, canRestart) {
   el.endTitle.textContent = champ.slot === game.mySlot ? 'You win the match' : champ.name + ' wins the match';
   el.endTitle.style.color = champ.body;
-  const line = game.archers.slice().sort((a, b) => b.score - a.score).map(a => displayName(a) + ' ' + a.score).join(' · ');
+  const line = 'KOs: ' + game.archers.slice().sort((a, b) => b.score - a.score).map(a => displayName(a) + ' ' + a.score).join(' · ');
   el.endText.textContent = canRestart ? line : line + '. Waiting for the host to start a rematch.';
   el.endBtns.hidden = !canRestart;
   el.endOv.hidden = false;
@@ -971,9 +991,9 @@ function broadcast() {
   if (!net.guests.size) return;
   const snap = {
     t: 's', m: game.mode, p: game.paused ? 1 : 0, mi: game.mapIdx, rd: game.round, fz: game.freezeT, b: game.banner,
-    sh: r1(game.shake), g: game.settings.goal,
+    sh: r1(game.shake), g: game.settings.goal, f: game.feed ? [game.feed.k, game.feed.v, game.feed.t] : 0,
     a: game.archers.map(a => [a.slot, r1(a.x), r1(a.y), r2(a.vx), r2(a.vy), a.facing, a.aimX, a.aimY, a.arrows, a.alive ? 1 : 0,
-      a.dodgeT, a.onGround ? 1 : 0, a.runF, a.score, a.youT, a.name]),
+      a.dodgeT, a.onGround ? 1 : 0, a.runF, a.score, a.youT, a.name, a.shieldT]),
     r: game.arrows.map(r => [r1(r.x), r1(r.y), r2(r.ang), r.state === 'fly' ? 0 : r.state === 'drop' ? 1 : 2, r.slot]),
     e: net.events.splice(0),
   };
@@ -1043,16 +1063,19 @@ function applySnap(s) {
   if (!el.joinOv.hidden) hideOverlays();
   if (s.mi !== game.mapIdx || grid !== MAPS[s.mi].rows) { game.mapIdx = s.mi; grid = MAPS[s.mi].rows; buildMapCanvas(); }
   game.mode = s.m; game.round = s.rd; game.freezeT = s.fz; game.banner = s.b; game.shake = s.sh; game.settings.goal = s.g;
+  game.feed = Array.isArray(s.f) ? { k: s.f[0] & 3, v: s.f[1] & 3, t: s.f[2] } : null;
   game.archers = s.a.map(v => {
     const r = ROSTER[v[0]];
     return { slot: v[0], body: r.body, dark: r.dark, x: v[1], y: v[2], vx: v[3], vy: v[4], facing: v[5], aimX: v[6], aimY: v[7],
-      arrows: v[8], alive: !!v[9], dodgeT: v[10], onGround: !!v[11], runF: v[12], score: v[13], youT: v[14], name: cleanName(v[15]) || r.name, w: 8, h: 12 };
+      arrows: v[8], alive: !!v[9], dodgeT: v[10], onGround: !!v[11], runF: v[12], score: v[13], youT: v[14], name: cleanName(v[15]) || r.name,
+      shieldT: +v[16] || 0, w: 8, h: 12 };
   });
   game.arrows = s.r.map(v => ({ x: v[0], y: v[1], ang: v[2], state: ['fly', 'drop', 'stuck'][v[3]] || 'stuck', slot: v[4] & 3 }));
   for (const ev of s.e || []) {
     if (ev[0] === 's' && sfx[ev[1]]) sfx[ev[1]]();
     else if (ev[0] === 'k') deathParts(ev[1], ev[2], ev[3] & 3);
     else if (ev[0] === 'c') catchParts(ev[1], ev[2]);
+    else if (ev[0] === 'r') respawnParts(ev[1], ev[2]);
   }
   if (!!s.p !== game.paused) {
     game.paused = !!s.p;
@@ -1152,6 +1175,7 @@ function drawWrapped(x, y, w, h, fn) {
 }
 
 function drawArcher(a) {
+  if (a.shieldT > 0 && game.frame % 6 < 2) return;
   drawWrapped(a.x, a.y, a.w, a.h, (X, Y) => {
     const x = Math.round(X), y = Math.round(Y), f = a.facing;
     const flash = a.dodgeT > 0 && game.frame % 4 < 2;
@@ -1209,12 +1233,17 @@ function render() {
     let top = b.top, color = b.color || '#f4a53c';
     if (b.win !== undefined) {
       const w = game.archers.find(a => a.slot === b.win);
-      top = b.win === game.mySlot ? 'You take it' : (w ? w.name : ROSTER[b.win & 3].name) + ' takes it';
+      top = b.win === game.mySlot ? 'You win' : (w ? w.name : ROSTER[b.win & 3].name) + ' wins';
       color = ROSTER[b.win & 3].body;
     }
     ctx.fillStyle = 'rgba(18,14,26,.55)'; ctx.fillRect(0, 96, W, b.sub ? 44 : 30);
     textCentered(String(top).toUpperCase(), 110, 16, color);
     if (b.sub) textCentered(String(b.sub).toUpperCase(), 128, 8, '#eee5d3');
+  }
+  if (game.feed && !b) {
+    const f = game.feed, nm = s => s === game.mySlot ? 'You' : (game.archers.find(a => a.slot === s) || ROSTER[s]).name;
+    const txt = f.k === f.v ? (f.k === game.mySlot ? 'You hit your own arrow  -1' : nm(f.k) + ' hit their own arrow  -1') : nm(f.k) + " KO'd " + nm(f.v);
+    textCentered(txt.toUpperCase(), 24, 8, ROSTER[f.k].body);
   }
   if (game.attract && game.mode === 'play' && net.role === 'off') textCentered('DEMO', 10, 8, '#a69cba');
   if (net.role === 'guest' && net.lastSnapAt && game.mySlot < 0) textCentered('WATCHING', 10, 8, '#a69cba');
@@ -1227,8 +1256,7 @@ let lastBoard = '';
 function updateBoard() {
   const goal = game.settings.goal;
   const html = game.archers.map(a => {
-    const pips = '■'.repeat(Math.min(a.score, goal)) + '□'.repeat(Math.max(0, goal - a.score));
-    return `<div class="slot${a.alive ? '' : ' dead'}" style="--c:${a.body}"><span class="chip"></span><span class="nm">${esc(displayName(a))}</span><span class="pips" aria-label="${a.score} of ${goal} rounds">${pips}</span><span class="q" aria-label="${a.arrows} arrows">${a.arrows}↑</span></div>`;
+    return `<div class="slot${a.alive ? '' : ' dead'}" style="--c:${a.body}"><span class="chip"></span><span class="nm">${esc(displayName(a))}</span><span class="pips" aria-label="${a.score} of ${goal} KOs">${a.score}/${goal} KO</span><span class="q" aria-label="${a.arrows} arrows">${a.arrows}↑</span></div>`;
   }).join('');
   if (html !== lastBoard) { el.board.innerHTML = html; lastBoard = html; }
 }
@@ -1264,7 +1292,7 @@ function togglePause() {
   el.pauseOv.hidden = !game.paused;
   if (game.paused) $('resumeBtn').focus();
 }
-function demo() { startMatch({ mode: 'watch', foes: 3, diff: 'normal', goal: 5 }, true); }
+function demo() { startMatch({ mode: 'watch', foes: 3, diff: 'normal', goal: 10 }, true); }
 function toMenu() {
   closeNet();
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
