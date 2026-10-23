@@ -129,7 +129,7 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
         <h2 id="joinTitle">Join match</h2>
         <div class="linkrow"><input type="text" id="join-name" maxlength="12" placeholder="Your name" aria-label="Your name"><button class="big" id="joinBtn" type="button">Join</button></div>
         <p class="status" id="joinStatus">Pick a name, then join.</p>
-        <div class="btns"><button class="ghost" id="leaveBtn" type="button">Play solo instead</button></div>
+        <div class="btns"><button class="big" id="hostThisBtn" type="button" hidden>Host this room</button><button class="ghost" id="leaveBtn" type="button">Play solo instead</button></div>
       </div>
     </div>
     <div class="overlay" id="pauseOv" hidden>
@@ -171,6 +171,7 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
           <label><input type="radio" name="match" id="match-thh" value="thh"><span>Teams</span></label>
         </div></div>
       <div class="row"><label for="player-name">Your name</label><input type="text" id="player-name" maxlength="12" placeholder="Player"></div>
+      <div class="row"><label for="room-code">Room code</label><input type="text" id="room-code" maxlength="16" placeholder="Random" autocapitalize="characters" autocomplete="off" spellcheck="false"></div>
       <div class="row"><label>Solo</label>
         <div class="seg" role="radiogroup">
           <label><input type="radio" name="mode" id="mode-play" value="play" checked><span>You play</span></label>
@@ -240,6 +241,8 @@ const W = 320, H = 240, T = 16, COLS = 20, ROWS = 15;
 const GRAV = 0.28, MAX_FALL = 4.2, RUN = 1.6, JUMP_V = -5.7, ARROW_SPEED = 5.5, ARROW_G = 0.07, MAX_ARROWS = 6;
 const ROUND_LIMIT = 60 * 90, MAX_CHESTS = 2;
 const ROOM_PREFIX = 'quiver-spire-';
+const CODE_RE = /^[A-Z0-9]{4,16}$/;
+const cleanCode = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
 
 const MAPS = [
   { name: 'Sacred Ground', spawns: [[2,13],[17,13],[5,2],[14,2]], rows: [
@@ -1125,12 +1128,16 @@ function makeCode() {
 }
 const roomLink = code => location.origin + location.pathname + '#' + code;
 
-function hostOnline() {
+// code: a fixed room code to claim (like MONSIEUR); otherwise the setup field's code, or a random one
+function hostOnline(code, attempt = 0) {
   ensureAudio();
   if (!window.Peer) { lobbyStatus('Online play could not load. Check your connection and reload.'); showOnly('lobbyOv'); return; }
   closeNet();
-  net.role = 'host'; net.code = makeCode(); net.matchOn = false;
+  const typed = cleanCode(el.roomCode.value);
+  const wanted = code || (CODE_RE.test(typed) ? typed : '');
+  net.role = 'host'; net.code = wanted || makeCode(); net.fixed = !!wanted; net.matchOn = false;
   el.roomLink.value = roomLink(net.code);
+  history.replaceState(null, '', location.pathname + location.search + '#' + net.code);
   el.onlineStartBtn.disabled = true;
   lobbyStatus('Opening room…');
   showOnly('lobbyOv'); renderSeats();
@@ -1145,7 +1152,20 @@ function hostOnline() {
   peer.on('disconnected', () => { if (net.peer === peer && !peer.destroyed) peer.reconnect(); });
   peer.on('error', err => {
     if (net.peer !== peer) return;
-    if (err.type === 'unavailable-id') { hostOnline(); return; }
+    if (err.type === 'unavailable-id') {
+      if (!net.fixed) { hostOnline(); return; }
+      // a page reload can leave the code held for a few seconds, so retry before giving up
+      if (attempt < 3) {
+        const c = net.code;
+        lobbyStatus('Claiming room ' + c + '…');
+        setTimeout(() => { if (net.peer === peer) hostOnline(c, attempt + 1); }, 2500);
+        return;
+      }
+      const c = net.code;
+      closeNet();
+      showJoin(c, 'Room ' + c + ' is already open somewhere else. Join it instead.');
+      return;
+    }
     if (err.type === 'peer-unavailable') return;
     lobbyStatus('Connection problem (' + err.type + '). Close the room and try again.');
   });
@@ -1232,12 +1252,13 @@ function renderSeats() {
 }
 
 // ---------- online: guest ----------
-function showJoin(code) {
+function showJoin(code, msg) {
   net.code = code;
   el.joinTitle.textContent = 'Join room ' + code;
   el.joinName.value = el.nameInput.value;
-  joinStatus('Pick a name, then join.');
+  joinStatus(msg || 'Pick a name, then join.');
   el.joinBtn.disabled = false;
+  el.hostThisBtn.hidden = true;
   showOnly('joinOv');
   el.joinName.focus();
 }
@@ -1268,8 +1289,14 @@ function joinRoom() {
   peer.on('error', err => {
     if (net.peer !== peer) return;
     clearTimeout(timer);
-    el.joinBtn.disabled = false; net.role = 'off';
-    joinStatus(err.type === 'peer-unavailable' ? 'Room not found. It may have closed; ask your friend for a fresh link.' : 'Could not connect (' + err.type + '). Try again.');
+    const c = net.code;
+    closeNet();
+    net.code = c;
+    el.joinBtn.disabled = false;
+    if (err.type === 'peer-unavailable') {
+      joinStatus('Room ' + c + " isn't open right now. Host it yourself, or join again once your friend has it open.");
+      el.hostThisBtn.hidden = false;
+    } else joinStatus('Could not connect (' + err.type + '). Try again.');
   });
 }
 
@@ -1546,6 +1573,7 @@ const el = {
   endTitle: $('endTitle'), endText: $('endText'), endBtns: $('endBtns'), againBtn: $('againBtn'),
   pauseTitle: $('pauseTitle'), pauseBtns: $('pauseBtns'), roomLink: $('room-link'), seats: $('seats'),
   onlineStartBtn: $('onlineStartBtn'), nameInput: $('player-name'), joinName: $('join-name'), joinBtn: $('joinBtn'), joinTitle: $('joinTitle'),
+  roomCode: $('room-code'), hostThisBtn: $('hostThisBtn'),
 };
 const OVERLAYS = ['startOv', 'lobbyOv', 'joinOv', 'pauseOv', 'endOv'];
 function hideOverlays() { OVERLAYS.forEach(k => { el[k].hidden = true; }); }
@@ -1593,7 +1621,8 @@ function backToLobby() {
 }
 
 $('startBtn').addEventListener('click', beginSolo);
-$('hostBtn').addEventListener('click', hostOnline);
+$('hostBtn').addEventListener('click', () => hostOnline());
+$('hostThisBtn').addEventListener('click', () => hostOnline(net.code));
 $('onlineStartBtn').addEventListener('click', startOnlineMatch);
 $('closeRoomBtn').addEventListener('click', toMenu);
 $('joinBtn').addEventListener('click', joinRoom);
@@ -1621,6 +1650,8 @@ document.querySelectorAll('input[name="match"]').forEach(r => r.addEventListener
   if (net.role === 'host') renderSeats();
 }));
 el.nameInput.value = store.get('qs-name') || '';
+el.roomCode.value = store.get('qs-room') || '';
+el.roomCode.addEventListener('input', () => { el.roomCode.value = cleanCode(el.roomCode.value); store.set('qs-room', el.roomCode.value); });
 el.nameInput.addEventListener('change', () => { store.set('qs-name', cleanName(el.nameInput.value)); if (net.role === 'host') renderSeats(); });
 
 // ---------- loop ----------
@@ -1649,7 +1680,7 @@ try {
 describeMode();
 demo();
 const code = (location.hash || '').slice(1).toUpperCase();
-if (/^[A-Z0-9]{5}$/.test(code)) showJoin(code);
+if (CODE_RE.test(code)) showJoin(code);
 updateBoard();
 if (document.fonts && document.fonts.load) document.fonts.load('700 16px Silkscreen').catch(() => {});
 requestAnimationFrame(frame);

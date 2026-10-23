@@ -39,6 +39,10 @@ Chests can be turned off in the match setup.
 3. In Team Head Hunters, click a seat's team button in the lobby to move it between Red and Blue.
 4. Click **Start match**. AI archers fill any empty seats, and take over if someone leaves.
 
+### Fixed room codes
+
+Type a code (4–16 letters or digits) in **Room code** before hosting to get the same link every time, for example https://dpott197.github.io/quiver-spire/#MONSIEUR. Anyone who opens that link while the room is open joins it. If nobody is hosting, the page offers **Host this room**, so whoever arrives first can open it.
+
 The host's browser runs the match and friends connect to it directly over WebRTC ([PeerJS](https://peerjs.com/) handles the connection setup). There is no game server. The host should keep the page open for the whole match. A few strict networks block direct connections; if a friend can't join, try another network.
 
 ## Controls
