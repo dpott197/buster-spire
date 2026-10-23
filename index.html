@@ -1430,27 +1430,28 @@ const cv = document.getElementById('game'), ctx = cv.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) ^ 0x5bd1e995; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
-// night skyline of a robot city, with lit windows and a few beacons
+// a quiet night skyline: dark, low-contrast silhouettes so robots and shots stay readable
 const bg = document.createElement('canvas'); bg.width = W; bg.height = H;
 (function drawBg() {
   const g = bg.getContext('2d');
   const grd = g.createLinearGradient(0, 0, 0, H);
-  grd.addColorStop(0, '#070b18'); grd.addColorStop(0.55, '#121b36'); grd.addColorStop(1, '#22193a');
+  grd.addColorStop(0, '#080c18'); grd.addColorStop(0.7, '#0e1528'); grd.addColorStop(1, '#151a30');
   g.fillStyle = grd; g.fillRect(0, 0, W, H);
-  for (let i = 0; i < 70; i++) { g.fillStyle = hash(i, 9) > 0.75 ? '#e6edf7' : '#5a6a96'; g.fillRect(Math.floor(hash(i, 1) * W), Math.floor(hash(i, 2) * H * 0.55), 1, 1); }
-  g.fillStyle = 'rgba(79,211,255,.06)';
-  for (let x = 0; x < W; x += 16) g.fillRect(x, 0, 1, H);
-  const city = (col, win, base, n, seed) => {
+  // faint horizon glow behind the city
+  const glow = g.createRadialGradient(W / 2, H + 40, 10, W / 2, H + 40, 220);
+  glow.addColorStop(0, 'rgba(70,90,150,.18)'); glow.addColorStop(1, 'rgba(70,90,150,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 24; i++) { g.fillStyle = 'rgba(160,175,210,.35)'; g.fillRect(Math.floor(hash(i, 1) * W), Math.floor(hash(i, 2) * H * 0.45), 1, 1); }
+  const city = (col, base, n, seed, minH, spanH) => {
+    g.fillStyle = col;
     for (let i = 0; i < n; i++) {
-      const w = 16 + Math.floor(hash(i, seed) * 26), x = Math.floor(hash(i, seed + 1) * W), h = 50 + Math.floor(hash(i, seed + 2) * 110);
-      g.fillStyle = col; g.fillRect(x, base - h, w, h + 40);
-      if (hash(i, seed + 3) > 0.5) { g.fillRect(x + Math.floor(w / 2), base - h - 12, 1, 12); g.fillStyle = '#ff5a4a'; g.fillRect(x + Math.floor(w / 2), base - h - 13, 1, 1); }
-      for (let wy = base - h + 4; wy < base; wy += 6) for (let wx = x + 3; wx < x + w - 2; wx += 4) {
-        if (hash(wx, wy + seed) > 0.72) { g.fillStyle = hash(wy, wx) > 0.5 ? win : '#4fd3ff'; g.fillRect(wx, wy, 2, 2); }
-      }
+      const w = 18 + Math.floor(hash(i, seed) * 28), x = Math.floor(hash(i, seed + 1) * W), h = minH + Math.floor(hash(i, seed + 2) * spanH);
+      g.fillRect(x, base - h, w, h + 40);
+      if (hash(i, seed + 3) > 0.6) g.fillRect(x + Math.floor(w / 2), base - h - 8, 1, 8);
     }
   };
-  city('#141c33', 'rgba(255,211,107,.55)', H, 12, 30); city('#0e1426', 'rgba(255,211,107,.8)', H + 10, 9, 60);
+  city('#111933', H, 10, 30, 70, 100);
+  city('#0c1226', H + 10, 8, 60, 40, 70);
 })();
 
 const mapCv = document.createElement('canvas'); mapCv.width = W; mapCv.height = H;
