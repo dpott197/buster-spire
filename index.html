@@ -215,6 +215,7 @@ kbd { font-family: var(--body); font-size: 11px; border: 1px solid var(--stone-h
         <dt><kbd>X</kbd> <kbd>K</kbd></dt><dd>Shoot in the held direction (8-way)</dd>
         <dt><kbd>C</kbd> <kbd>L</kbd> <kbd>Shift</kbd></dt><dd>Dodge. Catches arrows mid-dash</dd>
         <dt><kbd>Esc</kbd> <kbd>P</kbd></dt><dd>Pause (online, only the host can pause)</dd>
+        <dt>Controller</dt><dd>Stick or d-pad to move and aim, A jump, X or Y shoot, B or any bumper or trigger dodge, Start to begin or pause</dd>
       </dl>
       <p class="note">Your own arrows can't hurt you. Land on a head to stomp. Walk over arrows to collect them, up to six. A round ends after 90 seconds if no one wins it. Online, the host's browser runs the match, so the host should keep this page open.</p>
     </section>
@@ -417,10 +418,10 @@ for (const k of Object.keys(sfx)) { const f = sfx[k]; sfx[k] = () => { f(); if (
 // ---------- input ----------
 const keys = new Set(), pressed = new Set();
 const KEYMAP = {
-  left: ['ArrowLeft', 'KeyA', 'tLeft'], right: ['ArrowRight', 'KeyD', 'tRight'],
-  up: ['ArrowUp', 'KeyW', 'tUp'], down: ['ArrowDown', 'KeyS', 'tDown'],
-  jump: ['KeyZ', 'KeyJ', 'Space', 'tJump'], shoot: ['KeyX', 'KeyK', 'tShoot'],
-  dodge: ['KeyC', 'KeyL', 'ShiftLeft', 'ShiftRight', 'tDodge'],
+  left: ['ArrowLeft', 'KeyA', 'tLeft', 'gLeft'], right: ['ArrowRight', 'KeyD', 'tRight', 'gRight'],
+  up: ['ArrowUp', 'KeyW', 'tUp', 'gUp'], down: ['ArrowDown', 'KeyS', 'tDown', 'gDown'],
+  jump: ['KeyZ', 'KeyJ', 'Space', 'tJump', 'gJump'], shoot: ['KeyX', 'KeyK', 'tShoot', 'gShoot'],
+  dodge: ['KeyC', 'KeyL', 'ShiftLeft', 'ShiftRight', 'tDodge', 'gDodge'],
 };
 const GAME_KEYS = new Set(Object.values(KEYMAP).flat());
 const held = name => KEYMAP[name].some(k => keys.has(k));
@@ -465,6 +466,39 @@ document.querySelectorAll('#touch button').forEach(b => {
   b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
+
+// Controllers (standard mapping): stick or d-pad to move and aim, A jump, X/Y shoot, B or bumpers/triggers dodge, Start pauses.
+// Every connected pad drives the local archer through the same virtual keys as the touch buttons.
+const padHeld = {};
+let padNote = 0;
+addEventListener('gamepadconnected', () => { padNote = 150; });
+function pollPads() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  const want = {};
+  for (const p of pads) {
+    const b = i => !!(p.buttons[i] && p.buttons[i].pressed), ax = p.axes[0] || 0, ay = p.axes[1] || 0;
+    want.gLeft = want.gLeft || ax < -0.4 || b(14);
+    want.gRight = want.gRight || ax > 0.4 || b(15);
+    want.gUp = want.gUp || ay < -0.5 || b(12);
+    want.gDown = want.gDown || ay > 0.5 || b(13);
+    want.gJump = want.gJump || b(0);
+    want.gShoot = want.gShoot || b(2) || b(3);
+    want.gDodge = want.gDodge || b(1) || b(4) || b(5) || b(6) || b(7);
+    want.gStart = want.gStart || b(9);
+  }
+  for (const k of ['gLeft', 'gRight', 'gUp', 'gDown', 'gJump', 'gShoot', 'gDodge', 'gStart']) {
+    const on = !!want[k];
+    if (on && !padHeld[k]) {
+      if (k === 'gStart') padStart(); else keyDown(k, false);
+    } else if (!on && padHeld[k] && k !== 'gStart') keyUp(k);
+    padHeld[k] = on;
+  }
+}
+function padStart() {
+  if (!el.startOv.hidden) beginSolo();
+  else if (!el.endOv.hidden && !el.endBtns.hidden) el.againBtn.click();
+  else if (net.role !== 'guest' && !game.attract && game.mode === 'play') togglePause();
+}
 
 const blankInput = () => ({ left: false, right: false, up: false, down: false, jump: false, jumpPressed: false, shoot: false, dodge: false, aim: null, dodgeDir: null });
 function humanInput() {
@@ -1548,6 +1582,7 @@ function render() {
   if (game.attract && game.mode === 'play' && net.role === 'off') textCentered('DEMO · ' + MODES[game.settings.match].name.toUpperCase(), 10, 8, '#a69cba');
   if (net.role === 'guest' && net.lastSnapAt && game.mySlot < 0) textCentered('WATCHING', 10, 8, '#a69cba');
   if (net.role === 'guest' && net.lastSnapAt && performance.now() - net.lastSnapAt > 1500) textCentered('WAITING FOR HOST…', 36, 8, '#f4a53c');
+  if (padNote > 0) { padNote--; textCentered('CONTROLLER CONNECTED', 230, 8, '#eee5d3'); }
   if (net.role === 'host' && net.matchOn) textCentered('ROOM ' + net.code + ' · ' + (net.guests.size + 1) + ' PLAYERS', 10, 8, '#a69cba');
 }
 
@@ -1662,6 +1697,7 @@ function tick(now) {
   while (acc >= 1000 / 60) { step(); acc -= 1000 / 60; }
 }
 function frame(now) {
+  pollPads();
   tick(now);
   render();
   if (game.frame % 6 === 0) updateBoard();

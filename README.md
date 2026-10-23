@@ -56,6 +56,8 @@ The host's browser runs the match and friends connect to it directly over WebRTC
 | Dodge (catches arrows) | C, L or Shift |
 | Pause (host only online) | Esc or P |
 
+**Controller:** any controller the browser recognises works (Xbox, PlayStation, Switch Pro and most others). Stick or d-pad to move and aim, A jump, X or Y shoot, B or any bumper or trigger dodge, Start to begin a match or pause. Press a button once after plugging it in so the browser notices it.
+
 Phones get on-screen buttons.
 
 The whole game is `index.html`, with no build step.
